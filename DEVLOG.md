@@ -32,3 +32,23 @@
 - GPIO pin conflict check between stacked HATs still TBD on hardware
 - No i2cdetect run yet to confirm Waveshare HAT appears at 0x40
 - `smbus2` and `RPi.GPIO` not yet installed on target Pi 4
+
+---
+
+## Session 2 — Hardware bring-up: tracks confirmed
+
+### What was done
+- Ran `i2cdetect -y 1` — Waveshare HAT confirmed at 0x40 (all-call at 0x70 also present, normal)
+- Confirmed `smbus2` and `RPi.GPIO` installed on target Pi 4
+- Ran `tests/test_tracks_manual.py` — both tracks spin and run in the correct direction at 70%
+- Extended test script (renamed to `tests/test_all_motors_manual.py`) to cover arm joints (shoulder/elbow/wrist/gripper) at 25% / 0.5 s — no governor fitted yet
+
+### What worked
+- Waveshare Motor Driver HAT I2C comms verified (MODE1 = 0x11, oscillator running)
+- Left track (Motor 0) and right track (Motor 1) both respond correctly, correct direction for positive speed
+- `TrackedBase.forward()` drives both tracks together as expected
+
+### Unresolved
+- Arm joint directions not yet verified on hardware — run the extended test and note which direction each joint moves for +ve speed; swap `pin_a`/`pin_b` in `gpio_motor._MOTOR_PINS` for any that are reversed
+- GPIO pin conflicts between stacked HATs not yet confirmed (tracks working suggests no conflict on I2C pins; GPIO pins still TBD)
+- No governor / joint angle limits in place — arm testing must be done carefully at low speed

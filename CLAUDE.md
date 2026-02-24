@@ -302,13 +302,20 @@ in use), and gives reliable turn angle.
 
 ## Development status
 
-As of the last session (Phase 1), all code is written and structured but
-**no hardware testing has been done yet**. Specifically:
+Phase 1 code complete. Hardware bring-up in progress (Session 2).
 
-- `i2cdetect -y 1` has not been run to confirm the Waveshare HAT appears at 0x40
-- GPIO pin conflicts between the two stacked HATs are unconfirmed on hardware
-- `smbus2` and `RPi.GPIO` are not yet installed on the target Pi 4
-- No tests exist; the project has no test runner configured
+**Confirmed working:**
+- Waveshare Motor Driver HAT present at I2C 0x40 (`i2cdetect -y 1` verified)
+- `smbus2` and `RPi.GPIO` installed on target Pi 4
+- Both tracks (Motor 0 left, Motor 1 right) spin correctly; positive speed = forward
+- `TrackedBase.forward()` drives both tracks together
+
+**Still to verify:**
+- Arm joint directions — run `tests/test_all_motors_manual.py` and note which way each joint moves for +ve speed; swap `pin_a`/`pin_b` in `gpio_motor._MOTOR_PINS` for any that are reversed
+- GPIO pin conflicts between stacked HATs (I2C side looks clean; GPIO TBD)
+- No governor / joint angle limits yet — arm testing must be done at low speed
+
+**No automated test runner configured.** Manual test script: `tests/test_all_motors_manual.py`
 
 When hardware testing begins, update DEVLOG.md with findings.
 
