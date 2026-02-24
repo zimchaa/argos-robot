@@ -88,3 +88,4 @@ class GPIOMotor:
     def cleanup(self):
         self.stop()
         self._pwm.stop()
+        self._pwm = None
