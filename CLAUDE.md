@@ -36,6 +36,8 @@ argos/
     __main__.py     # [planned] python -m argos.mcp entry point
 requirements.txt    # smbus2, RPi.GPIO (+ opencv-python, mcp planned)
 DEVLOG.md           # Session-by-session development log
+docs/               # Hardware datasheets and schematics
+  sbcomponents_motorshield_schematic_v1.3.pdf
 ```
 
 ---
@@ -279,13 +281,95 @@ argos/mcp/
 
 ---
 
+## SB Components MotorShield — full board features
+
+Schematic: `docs/sbcomponents_motorshield_schematic_v1.3.pdf` (v1.3, dated 11/10/2016)
+Motor ICs: 2× L293DD dual H-bridge. Schematic source: github.com/sbcshop/MotorShield
+
+### Features beyond motor drive
+
+#### Direction indicator LEDs (already on board, no extra hardware needed)
+21 LEDs (L1–L21) in 4 groups driven by NPN transistors T1–T4 (BC817).
+Each transistor is driven by a dedicated Pi GPIO pin via a 1K base resistor,
+with a 1K collector resistor to +5V feeding the LED group.
+
+| GPIO (BOARD) | BCM   | Drives         |
+|--------------|-------|----------------|
+| 33           | GPIO13| T2 — LED group (motors 1+2 direction A) |
+| 35           | GPIO19| T1 — LED group (motors 1+2 direction B) |
+| 36           | GPIO16| T3 — LED group (motors 3+4 direction A) |
+| 37           | GPIO26 | T4 — LED group (motors 3+4 direction B) |
+
+These pins are currently **undriven** in our code — the LEDs are dark.
+Future: drive these in software to give visual direction feedback.
+
+#### Ultrasonic sensor header (CN10 — 4-pin, not populated)
+Voltage divider already fitted on board (R10 1K / R14 2K) to level-shift
+the 5V ECHO signal to 3.3V safe for the Pi. Just needs a sensor plugged in.
+
+| Pin function | GPIO (BOARD) | BCM   |
+|--------------|--------------|-------|
+| TRIG (output)| 29           | GPIO5 |
+| ECHO (input) | 31           | GPIO6 |
+
+#### IR sensor headers (CN8, CN9 — 3-pin each, not populated)
+Voltage dividers already fitted (R8/R15 and R9/R13 respectively).
+
+| Sensor | GPIO (BOARD) | BCM    |
+|--------|--------------|--------|
+| IR1 (CN9) | 7        | GPIO4  |
+| IR2 (CN8) | 12       | GPIO18 |
+
+#### Power connector (CN6, CN7)
+12V motor supply input with reverse-polarity protection diode D1 and
+100µF/16V bulk decoupling capacitor C5.
+
+### Complete GPIO pin usage (BOARD numbering)
+
+| BOARD | BCM    | Used by                          |
+|-------|--------|----------------------------------|
+| 3     | GPIO2  | I2C SDA (Waveshare HAT)          |
+| 5     | GPIO3  | I2C SCL (Waveshare HAT)          |
+| 7     | GPIO4  | IR1 signal (CN9, unpopulated)    |
+| 11    | GPIO17 | Motor 1 enable (gripper)         |
+| 12    | GPIO18 | IR2 signal (CN8, unpopulated)    |
+| 13    | GPIO27 | Motor 1 pin_b (gripper)          |
+| 15    | GPIO22 | Motor 1 pin_a (gripper)          |
+| 16    | GPIO23 | Motor 2 pin_a (elbow)            |
+| 18    | GPIO24 | Motor 2 pin_b (elbow)            |
+| 19    | GPIO10 | Motor 3 enable (wrist)           |
+| 21    | GPIO9  | Motor 3 pin_a (wrist)            |
+| 22    | GPIO25 | Motor 2 enable (elbow)           |
+| 23    | GPIO11 | Motor 3 pin_b (wrist)            |
+| 24    | GPIO8  | Motor 4 pin_a (shoulder)         |
+| 26    | GPIO7  | Motor 4 pin_b (shoulder)         |
+| 29    | GPIO5  | Ultrasonic TRIG (CN10, unpopulated) |
+| 31    | GPIO6  | Ultrasonic ECHO (CN10, unpopulated) |
+| 32    | GPIO12 | Motor 4 enable (shoulder)        |
+| 33    | GPIO13 | Direction LED group T2           |
+| 35    | GPIO19 | Direction LED group T1           |
+| 36    | GPIO16 | Direction LED group T3           |
+| 37    | GPIO26 | Direction LED group T4           |
+| **38**| GPIO20 | **FREE**                         |
+| **40**| GPIO21 | **FREE**                         |
+
+GND available at BOARD 39 (adjacent to 38 and 40).
+
+> **Note**: BOARD 33 (GPIO13) was previously suggested for an external LED —
+> this is incorrect, it is wired to direction LEDs on the shield.
+> Use **BOARD 38 + 39** or **BOARD 40 + 39** for any external LED.
+
+---
+
 ## Hardware shopping list
 
 Components identified as useful but not yet purchased:
 
 | Item | Purpose | Notes |
 |------|---------|-------|
-| 330Ω resistor | Current-limiting for LED on BOARD 33 (GPIO13) | GPIO13 is hardware PWM-capable — supports brightness control. Connect LED between BOARD 33 (+) and BOARD 34 (GND) with resistor in series |
+| 330Ω resistor | Current-limiting for external LED | Connect LED between BOARD 38 (GPIO20) + BOARD 39 (GND) with resistor in series. BOARD 33 is NOT free — it drives onboard direction LEDs |
+| HC-SR04 ultrasonic sensor | Obstacle detection / safety | Plug into CN10 (4-pin header on MotorShield). Voltage divider already fitted on board — no extra resistors needed. TRIG=BOARD 29, ECHO=BOARD 31 |
+| IR sensors ×2 | Line following / object detection | Plug into CN8 and CN9 (3-pin headers on MotorShield). Voltage dividers already fitted. IR1=BOARD 7 (GPIO4), IR2=BOARD 12 (GPIO18) |
 
 ---
 
