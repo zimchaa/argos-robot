@@ -24,8 +24,8 @@ from argos.drivers.gpio_motor import GPIOMotor
 from argos.config import TRACK_MOTORS, ARM_JOINTS
 
 # Build lookup: (type, id) → label for display
-_LABELS = {("i2c", mid): label for mid, label in TRACK_MOTORS.items()}
-_LABELS.update({("gpio", mid): name for name, mid in ARM_JOINTS.items()})
+_LABELS = {("i2c", cfg.motor_id): label for label, cfg in TRACK_MOTORS.items()}
+_LABELS.update({("gpio", cfg.motor_id): name for name, cfg in ARM_JOINTS.items()})
 
 
 def ask(prompt, cast=str, validate=None):
@@ -49,8 +49,12 @@ if __name__ == "__main__":
     parsed = parser.parse_args()
 
     print("ARGOS — motor jog")
-    print(f"  I2C motors (tracks):  {TRACK_MOTORS}")
-    print(f"  GPIO motors (arm):    {ARM_JOINTS}")
+    print("  I2C motors (tracks):")
+    for label, cfg in TRACK_MOTORS.items():
+        print(f"    {label:8s}  id={cfg.motor_id}  +={cfg.positive}  -={cfg.negative}")
+    print("  GPIO motors (arm):")
+    for label, cfg in ARM_JOINTS.items():
+        print(f"    {label:8s}  id={cfg.motor_id}  +={cfg.positive}  -={cfg.negative}")
     print()
 
     if all(v is not None for v in (parsed.type, parsed.id, parsed.speed, parsed.duration)):

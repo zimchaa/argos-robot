@@ -152,7 +152,8 @@ if __name__ == "__main__":
 
         # --- Tracks ---
         print("\n-- TRACKS --")
-        for motor_id, label in TRACK_MOTORS.items():
+        for label, cfg in TRACK_MOTORS.items():
+            motor_id = cfg.motor_id
             input(f"\n  Press Enter to run Motor {motor_id} ({label}) ...")
             run_i2c_motor(motor_id, label, track_speed, track_duration)
             obs = observe(label)
@@ -167,7 +168,8 @@ if __name__ == "__main__":
         print(f"\n-- ARM JOINTS (speed capped at {ARM_SPEED_CAP}%, no governor) --")
         GPIO.setmode(GPIO.BOARD)
         GPIO.setwarnings(False)
-        for label, motor_id in ARM_JOINTS.items():
+        for label, cfg in ARM_JOINTS.items():
+            motor_id = cfg.motor_id
             input(f"\n  Press Enter to jog {label} ...")
             run_joint(motor_id, label, arm_speed, arm_duration)
             obs = observe(label)

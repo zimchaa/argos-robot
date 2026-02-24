@@ -22,10 +22,10 @@ class RobotArm:
     def __init__(self):
         GPIO.setmode(GPIO.BOARD)
         GPIO.setwarnings(False)
-        self.shoulder = GPIOMotor(ARM_JOINTS["shoulder"])
-        self.elbow    = GPIOMotor(ARM_JOINTS["elbow"])
-        self.wrist    = GPIOMotor(ARM_JOINTS["wrist"])
-        self.gripper  = GPIOMotor(ARM_JOINTS["gripper"])
+        self.shoulder = GPIOMotor(ARM_JOINTS["shoulder"].motor_id)
+        self.elbow    = GPIOMotor(ARM_JOINTS["elbow"].motor_id)
+        self.wrist    = GPIOMotor(ARM_JOINTS["wrist"].motor_id)
+        self.gripper  = GPIOMotor(ARM_JOINTS["gripper"].motor_id)
         self._joints  = [self.shoulder, self.elbow, self.wrist, self.gripper]
 
     def stop(self):
