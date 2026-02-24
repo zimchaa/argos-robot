@@ -1,96 +1,183 @@
 """
-Manual hardware test for all motors.
+Manual hardware test for all motors with interactive reporting.
 
 Run with: python3 tests/test_all_motors_manual.py
 
-Steps:
-  1. Comms check — read MODE1 register from PCA9685
-  2. Motor 0 (left track) forward for 1 s then stop
-  3. Motor 1 (right track) forward for 1 s then stop
-  4. Both together (TrackedBase.forward) for 1.5 s then stop
-  5. Arm joints — shoulder, elbow, wrist, gripper — each 0.5 s at low speed
-     NO governor fitted: speed is capped at 25%, duration 0.5 s. Be ready to Ctrl-C.
+- Prompts for default speeds at startup
+- Runs each motor individually with a keypress gate
+- Collects observations after each run (direction, result, notes)
+- Prints a formatted report at the end to paste back into the dev session
 
-Motors will actually spin — make sure joints and tracks are free to move safely.
+NO governor fitted on arm — arm speed is capped at 70%.
+Be ready to Ctrl-C at any time.
 """
 
 import sys
 import time
+import datetime
 
 sys.path.insert(0, "/home/zimchaa/argos")
 
 import smbus2
 import RPi.GPIO as GPIO
-from argos.drivers.pca9685 import PCA9685, I2CMotor
+from argos.drivers.pca9685 import I2CMotor
 from argos.drivers.gpio_motor import GPIOMotor
 from argos.base.tracks import TrackedBase
+from argos.config import TRACK_MOTORS, ARM_JOINTS
 
-ARM_SPEED    = 25   # conservative — no governor fitted
-ARM_DURATION = 0.5  # seconds
+ARM_SPEED_CAP = 70   # hard cap — no governor fitted
+
+
+def ask_int(prompt, default, lo, hi):
+    while True:
+        raw = input(f"  {prompt} [{default}]: ").strip()
+        if raw == "":
+            return default
+        try:
+            val = int(raw)
+            if lo <= val <= hi:
+                return val
+            print(f"  Enter a value between {lo} and {hi}.")
+        except ValueError:
+            print("  Enter a whole number.")
+
+
+def observe(label):
+    """Ask for direction observation and optional notes. Returns a dict."""
+    print(f"  Observation for {label}:")
+    dir_input = input("    Direction for +ve speed (f=forward/up/open, r=reverse/down/close, n=no movement, ?=unclear): ").strip().lower()
+    direction_map = {"f": "forward/up/open", "r": "reverse/down/close", "n": "no movement", "?": "unclear"}
+    direction = direction_map.get(dir_input, dir_input or "not recorded")
+    notes = input("    Any notes (or Enter to skip): ").strip()
+    return {"direction": direction, "notes": notes}
 
 
 def check_comms():
-    print("1. Comms check — reading MODE1 from PCA9685 at 0x40 ...")
+    print("\n-- COMMS CHECK --")
     bus = smbus2.SMBus(1)
     val = bus.read_byte_data(0x40, 0x00)
     bus.close()
-    print(f"   MODE1 = 0x{val:02X}  (expect 0x00 or 0x20 after reset)  ✓")
+    print(f"  PCA9685 at 0x40 — MODE1 = 0x{val:02X}  ✓")
+    return f"0x{val:02X}"
 
 
-def test_motor(motor_id, label, speed=70, duration=1.0):
-    print(f"\n2. Motor {motor_id} ({label}) — {speed}% for {duration}s ...")
+def run_i2c_motor(motor_id, label, speed, duration):
+    print(f"\n  Running Motor {motor_id} ({label}) at {speed}% for {duration}s ...")
     m = I2CMotor(motor_id=motor_id)
     m.run(speed)
     time.sleep(duration)
     m.stop()
     I2CMotor.close_all()
-    print(f"   Motor {motor_id} stopped  ✓")
+    print(f"  Stopped.")
 
 
-def test_base(speed=70, duration=1.5):
-    print(f"\n3. TrackedBase.forward({speed}) for {duration}s ...")
+def run_base(speed, duration):
+    print(f"\n  Running TrackedBase.forward({speed}%) for {duration}s ...")
     base = TrackedBase()
     base.forward(speed)
     time.sleep(duration)
     base.stop()
     base.close()
-    print("   Base stopped  ✓")
+    print(f"  Stopped.")
 
 
-def test_joint(motor_id, label):
-    print(f"\n   Joint {motor_id} ({label}) — +{ARM_SPEED}% for {ARM_DURATION}s ...")
+def run_joint(motor_id, label, speed, duration):
+    print(f"\n  Running joint {motor_id} ({label}) at +{speed}% for {duration}s ...")
     m = GPIOMotor(motor_id)
-    m.run(ARM_SPEED)
-    time.sleep(ARM_DURATION)
+    m.run(speed)
+    time.sleep(duration)
     m.cleanup()
-    print(f"   {label} stopped  ✓  — note which direction it moved")
+    print(f"  Stopped.")
+
+
+def print_report(report):
+    lines = []
+    lines.append("=" * 60)
+    lines.append("ARGOS MOTOR TEST REPORT")
+    lines.append(f"Date: {report['date']}")
+    lines.append(f"PCA9685 MODE1: {report['mode1']}")
+    lines.append("")
+    lines.append("TRACKS (Waveshare HAT, I2C 0x40)")
+    lines.append(f"  Speed: {report.get('track_speed', '?')}%   Duration: {report.get('track_duration', '?')}s")
+    for entry in report["tracks"]:
+        lines.append(f"  Motor {entry['id']} ({entry['label']}): {entry['direction']}")
+        if entry["notes"]:
+            lines.append(f"    Notes: {entry['notes']}")
+    lines.append("")
+    lines.append("TRACKS COMBINED (TrackedBase.forward)")
+    entry = report.get("base", {})
+    lines.append(f"  Result: {entry.get('direction', 'not reached')}")
+    if entry.get("notes"):
+        lines.append(f"  Notes: {entry['notes']}")
+    lines.append("")
+    lines.append("ARM JOINTS (SB Components MotorShield, GPIO)")
+    lines.append(f"  Speed: {report.get('arm_speed', '?')}%   Duration: {report.get('arm_duration', '?')}s")
+    for entry in report["joints"]:
+        lines.append(f"  Motor {entry['id']} ({entry['label']}): {entry['direction']}")
+        if entry["notes"]:
+            lines.append(f"    Notes: {entry['notes']}")
+    lines.append("=" * 60)
+    output = "\n".join(lines)
+    print("\n\n" + output + "\n")
 
 
 if __name__ == "__main__":
+    report = {
+        "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "mode1": "—",
+        "tracks": [],
+        "base": {},
+        "joints": [],
+    }
+
     try:
+        # --- Startup config ---
+        print("=" * 60)
+        print("ARGOS — full motor test")
+        print("=" * 60)
+        print("\nSet default speeds (press Enter to accept defaults):")
+        track_speed    = ask_int("Track speed % (1-100)", 70, 1, 100)
+        track_duration = ask_int("Track run duration seconds (1-5)", 1, 1, 5)
+        arm_speed_raw  = ask_int(f"Arm speed % (1-{ARM_SPEED_CAP}, no governor fitted)", 25, 1, ARM_SPEED_CAP)
+        arm_speed      = min(arm_speed_raw, ARM_SPEED_CAP)
+        arm_duration   = ask_int("Arm run duration seconds (1-3)", 1, 1, 3)
+
+        report["track_speed"]    = track_speed
+        report["track_duration"] = track_duration
+        report["arm_speed"]      = arm_speed
+        report["arm_duration"]   = arm_duration
+
+        # --- Comms ---
+        report["mode1"] = check_comms()
+
         # --- Tracks ---
-        check_comms()
-        input("\n   Press Enter to spin Motor 0 (left) ...")
-        test_motor(0, "left")
-        input("   Press Enter to spin Motor 1 (right) ...")
-        test_motor(1, "right")
-        input("   Press Enter to run both tracks forward ...")
-        test_base()
+        print("\n-- TRACKS --")
+        for motor_id, label in TRACK_MOTORS.items():
+            input(f"\n  Press Enter to run Motor {motor_id} ({label}) ...")
+            run_i2c_motor(motor_id, label, track_speed, track_duration)
+            obs = observe(label)
+            report["tracks"].append({"id": motor_id, "label": label, **obs})
+
+        input("\n  Press Enter to run both tracks together (TrackedBase.forward) ...")
+        run_base(track_speed, track_duration)
+        obs = observe("both tracks")
+        report["base"] = obs
 
         # --- Arm joints ---
-        print("\n-- ARM JOINTS (SB Components MotorShield) --")
-        print(f"   Speed capped at {ARM_SPEED}%, duration {ARM_DURATION}s — no governor fitted.")
-        print("   Note which direction each joint moves for +ve speed.")
+        print(f"\n-- ARM JOINTS (speed capped at {ARM_SPEED_CAP}%, no governor) --")
         GPIO.setmode(GPIO.BOARD)
         GPIO.setwarnings(False)
-        for motor_id, label in [(1, "shoulder"), (2, "elbow"), (3, "wrist"), (4, "gripper")]:
-            input(f"   Press Enter to jog {label} ...")
-            test_joint(motor_id, label)
+        for label, motor_id in ARM_JOINTS.items():
+            input(f"\n  Press Enter to jog {label} ...")
+            run_joint(motor_id, label, arm_speed, arm_duration)
+            obs = observe(label)
+            report["joints"].append({"id": motor_id, "label": label, **obs})
         GPIO.cleanup()
 
-        print("\nAll tests passed.")
+        print_report(report)
+
     except KeyboardInterrupt:
-        print("\nAborted — cleaning up ...")
+        print("\n\nAborted — cleaning up ...")
         try:
             I2CMotor.close_all()
         except Exception:
@@ -99,6 +186,9 @@ if __name__ == "__main__":
             GPIO.cleanup()
         except Exception:
             pass
+        if report["tracks"] or report["joints"]:
+            report.setdefault("base", {"direction": "aborted", "notes": ""})
+            print_report(report)
     except Exception as e:
         print(f"\nERROR: {e}")
         try:
