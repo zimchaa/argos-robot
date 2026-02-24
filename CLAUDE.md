@@ -38,6 +38,7 @@ requirements.txt    # smbus2, RPi.GPIO (+ opencv-python, mcp planned)
 DEVLOG.md           # Session-by-session development log
 docs/               # Hardware datasheets and schematics
   sbcomponents_motorshield_schematic_v1.3.pdf
+  waveshare_motor_driver_hat_schematic.pdf
 ```
 
 ---
@@ -281,6 +282,62 @@ argos/mcp/
 
 ---
 
+## Waveshare Motor Driver HAT — full board features
+
+Schematic: `docs/waveshare_motor_driver_hat_schematic.pdf`
+
+### ICs
+| IC | Part | Function |
+|----|------|----------|
+| PCA1 | PCA9685 | 16-channel PWM controller — I2C 0x40 |
+| TB1 | TB6612FNG | Dual H-bridge motor driver |
+| U1 | MP1584 | Step-down switcher — generates 5V from VIN |
+| U2 | RT9193-33 | 3.3V LDO from 5V |
+
+The Pi communicates **only over I2C** (SDA/SCL). The PCA9685 generates all PWM and
+direction signals; no other Pi GPIO pins are used by this HAT.
+
+### PCA9685 channel usage
+| Channel | Signal | Used for |
+|---------|--------|----------|
+| 0 | PWMA | Motor 0 speed (left track) |
+| 1 | AIN2 | Motor 0 direction |
+| 2 | AIN1 | Motor 0 direction |
+| 3 | BIN2 | Motor 1 direction |
+| 4 | BIN1 | Motor 1 direction |
+| 5 | PWMB | Motor 1 speed (right track) |
+| **6–15** | — | **FREE** — unconnected on this board |
+
+Channels 6–15 are brought out to the PCA9685 pads but not wired to anything.
+They are accessible over I2C at 0x40 and can drive servos, LEDs, or additional
+motor drivers wired externally.
+
+### I2C address configuration
+A0–A4 address pins have unpopulated solder-pad resistors (R8–R12, footprint NC).
+Populate any combination to change the address from 0x40 up to 0x7F.
+Allows stacking a second Waveshare HAT at a different address for more motors.
+
+### Headers
+| Header | Pins | Purpose |
+|--------|------|---------|
+| MOTOR1 | 2-pin | Motor A output (A1, A2) |
+| MOTOR2 | 2-pin | Motor B output (B1, B2) |
+| H1 | 6-pin | VIN, GND, A1, A2, B1, B2 combined |
+| VIN1 | 2-pin | External motor power input |
+| S1 | 6-pin | Power switch |
+| P? | 5-pin | **I2C expansion: 5V, 3V3, GND, SDA, SCL** |
+
+The 5-pin I2C expansion header (P?) exposes the I2C bus directly — ideal for
+attaching an IMU (e.g. MPU-6050 at 0x68, no address conflict with 0x40).
+
+### Power
+- Motor power: external VIN via VIN1/H1
+- 5V logic: generated onboard by MP1584 switcher from VIN
+- 3.3V: RT9193-33 LDO — powers PCA9685 and I2C pull-ups
+- PWR1: power indicator LED
+
+---
+
 ## SB Components MotorShield — full board features
 
 Schematic: `docs/sbcomponents_motorshield_schematic_v1.3.pdf` (v1.3, dated 11/10/2016)
@@ -367,9 +424,11 @@ Components identified as useful but not yet purchased:
 
 | Item | Purpose | Notes |
 |------|---------|-------|
-| 330Ω resistor | Current-limiting for external LED | Connect LED between BOARD 38 (GPIO20) + BOARD 39 (GND) with resistor in series. BOARD 33 is NOT free — it drives onboard direction LEDs |
-| HC-SR04 ultrasonic sensor | Obstacle detection / safety | Plug into CN10 (4-pin header on MotorShield). Voltage divider already fitted on board — no extra resistors needed. TRIG=BOARD 29, ECHO=BOARD 31 |
-| IR sensors ×2 | Line following / object detection | Plug into CN8 and CN9 (3-pin headers on MotorShield). Voltage dividers already fitted. IR1=BOARD 7 (GPIO4), IR2=BOARD 12 (GPIO18) |
+| 330Ω resistor | Current-limiting for external LED | Connect LED between BOARD 38 (GPIO20) + BOARD 39 (GND). BOARD 33 is NOT free — drives onboard direction LEDs on MotorShield |
+| HC-SR04 ultrasonic sensor | Obstacle detection / safety | Plug into CN10 on MotorShield. Voltage divider already fitted — no extra resistors needed. TRIG=BOARD 29 (GPIO5), ECHO=BOARD 31 (GPIO6) |
+| IR sensors ×2 | Line following / object detection | Plug into CN8/CN9 on MotorShield. Voltage dividers already fitted. IR1=BOARD 7 (GPIO4), IR2=BOARD 12 (GPIO18) |
+| MPU-6050 IMU | Gyro + accelerometer for odometry / turn angle | I2C at 0x68 — no conflict with Waveshare HAT at 0x40. Connect to Waveshare I2C expansion header (P?, 5-pin: 5V, 3V3, GND, SDA, SCL) |
+| Servo(s) | Camera pan/tilt or additional DOF | Drive via free PCA9685 channels 6–15 on Waveshare HAT — no extra hardware, just wire servo signal to the channel pad |
 
 ---
 
