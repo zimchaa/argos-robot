@@ -307,13 +307,21 @@ Phase 1 code complete. Hardware bring-up in progress (Session 2).
 **Confirmed working:**
 - Waveshare Motor Driver HAT present at I2C 0x40 (`i2cdetect -y 1` verified)
 - `smbus2` and `RPi.GPIO` installed on target Pi 4
-- Both tracks (Motor 0 left, Motor 1 right) spin correctly; positive speed = forward
-- `TrackedBase.forward()` drives both tracks together
+- Both tracks spin forward on positive speed; `TrackedBase.forward()` drives both together
+- Elbow, wrist, gripper all respond correctly via GPIOMotor driver
 
-**Still to verify:**
-- Arm joint directions — run `tests/test_all_motors_manual.py` and note which way each joint moves for +ve speed; swap `pin_a`/`pin_b` in `gpio_motor._MOTOR_PINS` for any that are reversed
-- GPIO pin conflicts between stacked HATs (I2C side looks clean; GPIO TBD)
-- No governor / joint angle limits yet — arm testing must be done at low speed
+**Known issues:**
+- **Track drift**: motor 1 (right) runs mechanically slower than motor 0 at equal power.
+  Will need feedback (IMU/encoder/visual odometry) to compensate automatically.
+- **Shoulder not moving**: motor 4 terminal produced no movement. Investigate connector and mechanical state before using the arm.
+
+**Arm wiring (confirmed on hardware 2026-02-24):**
+| Joint    | MotorShield terminal |
+|----------|----------------------|
+| shoulder | 4                    |
+| elbow    | 2                    |
+| wrist    | 3                    |
+| gripper  | 1                    |
 
 **No automated test runner configured.** Manual test script: `tests/test_all_motors_manual.py`
 

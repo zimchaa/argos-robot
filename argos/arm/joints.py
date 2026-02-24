@@ -3,10 +3,10 @@ High-level robot arm controller for ARGOS.
 Wraps four GPIOMotor instances with named joint attributes.
 
 Joint → MotorShield motor ID:
-  shoulder → 1
-  elbow    → 2
-  wrist    → 3
-  gripper  → 4
+  shoulder → 4  (confirmed on hardware 2026-02-24; motor 4 terminal)
+  elbow    → 2  (confirmed on hardware 2026-02-24)
+  wrist    → 3  (confirmed on hardware 2026-02-24)
+  gripper  → 1  (confirmed on hardware 2026-02-24; motor 1 terminal)
 
 Speed is -100 to 100. Which physical direction is positive is determined by
 wiring. To reverse a joint, swap its pin_a/pin_b in gpio_motor._MOTOR_PINS.
@@ -25,10 +25,10 @@ class RobotArm:
     def __init__(self):
         GPIO.setmode(GPIO.BOARD)
         GPIO.setwarnings(False)
-        self.shoulder = GPIOMotor(1)
+        self.shoulder = GPIOMotor(4)
         self.elbow    = GPIOMotor(2)
         self.wrist    = GPIOMotor(3)
-        self.gripper  = GPIOMotor(4)
+        self.gripper  = GPIOMotor(1)
         self._joints  = [self.shoulder, self.elbow, self.wrist, self.gripper]
 
     def stop(self):

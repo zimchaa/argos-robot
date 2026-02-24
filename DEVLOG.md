@@ -52,3 +52,31 @@
 - Arm joint directions not yet verified on hardware — run the extended test and note which direction each joint moves for +ve speed; swap `pin_a`/`pin_b` in `gpio_motor._MOTOR_PINS` for any that are reversed
 - GPIO pin conflicts between stacked HATs not yet confirmed (tracks working suggests no conflict on I2C pins; GPIO pins still TBD)
 - No governor / joint angle limits in place — arm testing must be done carefully at low speed
+
+---
+
+## Session 3 — Full motor test: all 6 motors verified
+
+### What was done
+- Ran `tests/test_all_motors_manual.py` with interactive reporting at 70% speed / 1s
+- Confirmed all track and arm motor drivers communicate and respond correctly
+- Discovered arm joint wiring did not match assumed motor ID order; corrected in `joints.py`
+
+### What worked
+- Both tracks spin forward with positive speed; correct direction confirmed
+- Elbow (motor 2) and wrist (motor 3) correctly connected and correct polarity
+- Gripper (physically on motor 1 terminal) responds and opens on positive speed
+- Arm joint motor driver (GPIOMotor + MotorShield) confirmed functional
+
+### Findings and fixes
+- **Arm wiring swap**: motor 1 terminal → gripper, motor 4 terminal → shoulder
+  (was assumed to be shoulder=1, gripper=4). Fixed in `argos/arm/joints.py` — no rewiring needed.
+- **Track drift**: motor 1 (right track) appears mechanically slower than motor 0 at equal power.
+  Noted for future compensation — will need feedback (IMU/encoder/visual) to correct automatically.
+- **Shoulder (motor 4) no movement**: motor 4 terminal shows no movement. Possible causes:
+  loose connector, mechanical bind, or faulty motor. Needs physical investigation before arm use.
+
+### Unresolved
+- Shoulder joint not moving — investigate connector and motor 4 terminal wiring
+- Track drift to be quantified and compensated once odometry/feedback is available
+- Joint directions (positive = which physical way) not yet fully characterised for all joints
