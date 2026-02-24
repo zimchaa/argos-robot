@@ -1,14 +1,20 @@
 """
 Single-motor jog utility for ARGOS.
 
-Run with: python3 tests/motor_jog.py
+Interactive:   python3 tests/motor_jog.py
+With args:     python3 tests/motor_jog.py <type> <id> <speed> <duration>
 
-Asks for motor type, ID, speed, and duration, then runs that one motor.
-Useful for spot-checking individual motors without running the full test suite.
+  type     — i2c or gpio
+  id       — motor ID (i2c: 0-1, gpio: 1-4)
+  speed    — -100 to 100
+  duration — seconds (0.1 to 10)
+
+Example:  python3 tests/motor_jog.py gpio 4 50 1.0
 """
 
 import sys
 import time
+import argparse
 
 sys.path.insert(0, "/home/zimchaa/argos")
 
@@ -35,15 +41,28 @@ def ask(prompt, cast=str, validate=None):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="ARGOS single-motor jog")
+    parser.add_argument("type",     nargs="?", choices=["i2c", "gpio"])
+    parser.add_argument("id",       nargs="?", type=int)
+    parser.add_argument("speed",    nargs="?", type=int)
+    parser.add_argument("duration", nargs="?", type=float)
+    parsed = parser.parse_args()
+
     print("ARGOS — motor jog")
     print(f"  I2C motors (tracks):  {TRACK_MOTORS}")
     print(f"  GPIO motors (arm):    {ARM_JOINTS}")
     print()
 
-    motor_type = ask("Motor type [i2c/gpio]", validate=lambda v: v in ("i2c", "gpio"))
-    motor_id   = ask("Motor ID", cast=int)
-    speed      = ask("Speed (-100 to 100)", cast=int, validate=lambda v: -100 <= v <= 100)
-    duration   = ask("Duration seconds (0.1 to 10)", cast=float, validate=lambda v: 0.1 <= v <= 10)
+    if all(v is not None for v in (parsed.type, parsed.id, parsed.speed, parsed.duration)):
+        motor_type = parsed.type
+        motor_id   = parsed.id
+        speed      = parsed.speed
+        duration   = parsed.duration
+    else:
+        motor_type = ask("Motor type [i2c/gpio]", validate=lambda v: v in ("i2c", "gpio"))
+        motor_id   = ask("Motor ID", cast=int)
+        speed      = ask("Speed (-100 to 100)", cast=int, validate=lambda v: -100 <= v <= 100)
+        duration   = ask("Duration seconds (0.1 to 10)", cast=float, validate=lambda v: 0.1 <= v <= 10)
 
     label = _LABELS.get((motor_type, motor_id), f"motor {motor_id}")
     print(f"\n  Running {motor_type.upper()} motor {motor_id} ({label}) at {speed}% for {duration}s ...")
