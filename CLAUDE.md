@@ -279,6 +279,16 @@ argos/mcp/
 
 ---
 
+## Hardware shopping list
+
+Components identified as useful but not yet purchased:
+
+| Item | Purpose | Notes |
+|------|---------|-------|
+| 330Ω resistor | Current-limiting for LED on BOARD 33 (GPIO13) | GPIO13 is hardware PWM-capable — supports brightness control. Connect LED between BOARD 33 (+) and BOARD 34 (GND) with resistor in series |
+
+---
+
 ## Base odometry (open question)
 
 The tracks have no encoders. Options under consideration — a sensor shopping
