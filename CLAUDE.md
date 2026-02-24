@@ -20,9 +20,21 @@ argos/
     gpio_motor.py   # GPIOMotor (arm joints, via SB Components MotorShield)
   base/
     tracks.py       # TrackedBase — high-level differential drive controller
+    odometry.py     # [planned] Dead-reckoning / sensor-based base odometry
   arm/
     joints.py       # RobotArm — high-level arm controller (4 named joints)
-requirements.txt    # smbus2, RPi.GPIO
+    kinematics.py   # [planned] Forward + inverse kinematics
+  vision/
+    camera.py       # [planned] Frame capture
+    aruco.py        # [planned] ArUco detection, joint angle extraction
+    calibration/    # [planned] Camera intrinsics + distortion data
+  safety/
+    monitor.py      # [planned] Background safety watchdog
+    limits.py       # [planned] Joint angle limits, workspace bounds
+  mcp/
+    server.py       # [planned] MCP tool definitions + server
+    __main__.py     # [planned] python -m argos.mcp entry point
+requirements.txt    # smbus2, RPi.GPIO (+ opencv-python, mcp planned)
 DEVLOG.md           # Session-by-session development log
 ```
 
@@ -109,6 +121,182 @@ Install on the Pi: `pip install -r requirements.txt`
 
 I2C must be enabled on the Pi (`raspi-config` → Interface Options → I2C).
 SPI should be **disabled** (default) to free pins for Motors 3 and 4.
+
+---
+
+## Planned system architecture (Phase 2+)
+
+The end goal is to expose the robot to a remote multimodal LLM (e.g. Claude)
+via an MCP server running on the Pi. The LLM issues high-level commands; the Pi
+handles vision, kinematics, safety, and motor execution locally.
+
+### Layer stack (bottom to top)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Remote LLM (Claude via API)                            │
+│  — sees camera frames, issues semantic commands         │
+├─────────────────────────────────────────────────────────┤
+│  MCP server  argos/mcp/server.py                        │
+│  — exposes tools over stdio/SSE to the LLM client       │
+├─────────────────────────────────────────────────────────┤
+│  Motion planner  argos/arm/kinematics.py                │
+│                  argos/base/odometry.py                 │
+│  — IK for arm pose targets, dead-reckoning for base     │
+├─────────────────────────────────────────────────────────┤
+│  Safety layer  argos/safety/monitor.py        ◄─ AUTH   │
+│  — joint angle limits, visual bounds check              │
+│  — can hard-stop any motor, overrides all layers above  │
+├─────────────────────────────────────────────────────────┤
+│  Vision  argos/vision/camera.py                         │
+│          argos/vision/aruco.py                          │
+│  — frame capture, ArUco detection, arm pose estimation  │
+├─────────────────────────────────────────────────────────┤
+│  Controllers (Phase 1 — already built)                  │
+│  TrackedBase  /  RobotArm                               │
+├─────────────────────────────────────────────────────────┤
+│  Drivers (Phase 1 — already built)                      │
+│  I2CMotor  /  GPIOMotor                                 │
+└─────────────────────────────────────────────────────────┘
+```
+
+The safety layer has **unconditional authority**: it can stop motors regardless
+of what any higher layer requests. All motion above driver level must pass
+through or be monitored by it.
+
+---
+
+## Vision subsystem (planned)
+
+### Camera
+- Mounted fixed on the robot body, pointing at the arm.
+- Likely: Raspberry Pi Camera Module (picamera2 library) or USB webcam (OpenCV
+  VideoCapture). Final choice deferred to hardware phase.
+
+### Arm pose tracking
+- **ArUco markers** (OpenCV `cv2.aruco`) affixed to each arm link.
+- One marker per link gives 6-DOF pose of that segment relative to the camera.
+- Adjacent marker poses are compared to derive joint angles.
+- Markers serve a dual purpose: pose tracking + visual reference for the LLM.
+- Camera must be calibrated (intrinsic matrix + distortion coefficients) for
+  accurate `solvePnP`-based pose estimation. Calibration stored in a config
+  file, not hard-coded.
+
+### Frame delivery to LLM
+- `get_camera_frame()` MCP tool returns a JPEG-encoded frame as base64.
+- The LLM (multimodal) receives this and can reason about the scene before
+  issuing commands.
+
+### Planned modules
+```
+argos/vision/
+  camera.py     # Frame capture, resolution/fps config
+  aruco.py      # Marker detection, joint angle extraction
+  calibration/  # Camera calibration data (intrinsics, distortion)
+```
+
+---
+
+## Arm kinematics (planned)
+
+### Joint configuration
+Vertical-plane serial chain: all joints rotate in the same plane.
+
+```
+         [wrist]──[gripper]
+        /
+[shoulder]──[elbow]
+   |
+  base (fixed)
+```
+
+- **Shoulder**: lifts/lowers the entire arm (rotation in vertical plane)
+- **Elbow**: bends the forearm segment
+- **Wrist**: tilts the end effector
+- **Gripper**: opens/closes (binary open/close or speed-controlled)
+
+### Inverse kinematics
+With a planar 3-link arm (shoulder + elbow + wrist in one plane), IK reduces
+to a 2D problem: given a target end-effector position (r, z) and orientation,
+solve for shoulder and elbow angles analytically, then wrist compensates.
+Exact link lengths TBD — to be measured on hardware and stored as constants.
+
+### Planned modules
+```
+argos/arm/
+  kinematics.py   # Forward + inverse kinematics, link length constants
+```
+
+---
+
+## Safety layer (planned)
+
+Responsibilities:
+- Define per-joint **angle limits** (configurable, stored in a config file or
+  dataclass — not scattered through the code).
+- Run as a background monitor (thread or asyncio task) that reads current arm
+  pose from the vision layer and calls `RobotArm.stop()` if any joint exceeds
+  its limit.
+- Expose an **emergency stop** callable that higher layers can also trigger.
+- The safety layer is the only place that may call `stop()` proactively —
+  higher layers request motion; the safety layer decides whether to allow it.
+
+```
+argos/safety/
+  monitor.py    # SafetyMonitor — background watchdog + limit enforcement
+  limits.py     # Joint angle limits, workspace bounds (constants/config)
+```
+
+---
+
+## MCP interface (planned)
+
+The Pi runs an MCP server that the remote LLM connects to. Tools expose semantic
+actions; the server translates them to kinematics + motor commands.
+
+### Planned tools
+
+| Tool | Arguments | Returns | Notes |
+|------|-----------|---------|-------|
+| `get_camera_frame` | — | base64 JPEG string | For LLM visual context |
+| `get_arm_pose` | — | joint angles + end-effector (x,y,z) | Current state |
+| `move_arm` | `x, y, z, grip` | success / error | IK → motor execution with visual feedback |
+| `move_base_forward` | `cm: float` | success / error | Dead-reckoning (see odometry section) |
+| `turn_base` | `degrees: float` | success / error | Positive = right, negative = left |
+| `stop_all` | — | — | Emergency stop, overrides everything |
+
+### Protocol
+- MCP transport: stdio (local) or SSE (network). Network SSE preferred so the
+  LLM client can be on a separate machine.
+- Library: Anthropic `mcp` Python package.
+- Server entry point: `argos/mcp/server.py`, runnable as `python -m argos.mcp`.
+
+```
+argos/mcp/
+  server.py     # Tool definitions, MCP server startup
+  __main__.py   # python -m argos.mcp entry point
+```
+
+---
+
+## Base odometry (open question)
+
+The tracks have no encoders. Options under consideration — a sensor shopping
+list for future hardware decisions:
+
+| Sensor | Interface | Gives | Notes |
+|--------|-----------|-------|-------|
+| MPU-6050 | I2C (0x68) | Gyro (turn angle) + accel | ~£3, very common Pi add-on |
+| BNO055 | I2C | Full 9-DOF with sensor fusion (yaw/pitch/roll) | More accurate, ~£10 |
+| Wheel encoders | GPIO interrupt | Precise distance + turn | Requires mechanical attachment to tracks |
+| HC-SR04 ultrasonic | GPIO trigger/echo | Obstacle distance (not odometry) | Useful for safety, not navigation |
+| Visual odometry | Camera | Position from environmental landmarks | Software only; camera currently faces arm not forward |
+
+**Current approach**: defer. `move_base_forward` and `turn_base` will initially
+use time-based dead reckoning (speed × time = approximate distance/angle).
+Accuracy will be assessed on hardware; a sensor will be added if needed.
+An IMU (MPU-6050) is the most likely addition — cheap, I2C (bus 1 is already
+in use), and gives reliable turn angle.
 
 ---
 
