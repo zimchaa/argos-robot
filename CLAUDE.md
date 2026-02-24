@@ -422,13 +422,13 @@ GND available at BOARD 39 (adjacent to 38 and 40).
 
 Components identified as useful but not yet purchased:
 
-| Item | Purpose | Notes |
-|------|---------|-------|
-| 330Ω resistor | Current-limiting for external LED | Connect LED between BOARD 38 (GPIO20) + BOARD 39 (GND). BOARD 33 is NOT free — drives onboard direction LEDs on MotorShield |
-| HC-SR04 ultrasonic sensor | Obstacle detection / safety | Plug into CN10 on MotorShield. Voltage divider already fitted — no extra resistors needed. TRIG=BOARD 29 (GPIO5), ECHO=BOARD 31 (GPIO6) |
-| IR sensors ×2 | Line following / object detection | Plug into CN8/CN9 on MotorShield. Voltage dividers already fitted. IR1=BOARD 7 (GPIO4), IR2=BOARD 12 (GPIO18) |
-| MPU-6050 IMU | Gyro + accelerometer for odometry / turn angle | I2C at 0x68 — no conflict with Waveshare HAT at 0x40. Connect to Waveshare I2C expansion header (P?, 5-pin: 5V, 3V3, GND, SDA, SCL) |
-| Servo(s) | Camera pan/tilt or additional DOF | Drive via free PCA9685 channels 6–15 on Waveshare HAT — no extra hardware, just wire servo signal to the channel pad |
+| Priority | Item | Purpose | Notes |
+|----------|------|---------|-------|
+| 1 | MPU-6050 IMU | Gyro + accelerometer for odometry / turn angle | Unblocks base navigation. I2C at 0x68 — no conflict with 0x40. Plugs into Waveshare I2C expansion header (P?, 5-pin). ~£3 |
+| 2 | HC-SR04 ultrasonic sensor | Obstacle detection / safety | Needed before any autonomous movement. Plugs into CN10 on MotorShield — voltage divider already fitted. TRIG=BOARD 29 (GPIO5), ECHO=BOARD 31 (GPIO6) |
+| 3 | IR sensors ×2 | Line following / object detection | Plugs into CN8/CN9 on MotorShield — voltage dividers already fitted. IR1=BOARD 7 (GPIO4), IR2=BOARD 12 (GPIO18) |
+| 4 | Servo(s) | Camera pan/tilt or additional DOF | Drive via free PCA9685 channels 6–15 on Waveshare HAT — no extra hardware needed |
+| 5 | 330Ω resistor | Current-limiting for external LED | Connect LED between BOARD 38 (GPIO20) + BOARD 39 (GND). BOARD 33 is NOT free — drives onboard direction LEDs on MotorShield |
 
 ---
 
