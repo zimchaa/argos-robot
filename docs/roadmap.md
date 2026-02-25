@@ -256,7 +256,7 @@ def move_arm(x: float, y: float, z: float, grip: bool) -> str:
 
 ---
 
-### Phase 2d — Odometry
+### Phase 2e — Odometry
 
 **Goal:** `move_base_forward(cm)` and `turn_base(degrees)` with reasonable accuracy.
 
@@ -272,6 +272,158 @@ def move_arm(x: float, y: float, z: float, grip: bool) -> str:
 - Gyro Z gives turn rate → integrate for heading → stop when target heading reached.
 - Accelerometer X gives forward motion estimate (noisy, but better than nothing).
 - `argos/base/odometry.py`: `Odometry` class wrapping the IMU.
+
+---
+
+### Phase 2f — Sensorium (coarse-to-fine target acquisition)
+
+**Goal:** give the planner a way to find a target in 3D space without needing the
+LLM to supply exact coordinates — starting rough from camera bearing alone and
+converging to a confident position estimate as the robot closes the distance.
+
+#### The problem with monocular depth
+
+A single camera cannot directly measure depth. The robot compensates by:
+
+1. **Floor-plane homography** — the most useful technique for ground-level targets.
+   Given the camera's known height, tilt, and intrinsic matrix, any pixel
+   representing a floor point can be ray-cast to the ground plane `y=0`, giving
+   an XZ position estimate in robot frame without stereo. The IMU roll/pitch
+   corrects for robot pitch on uneven terrain. Works well at 0.5–2 m range.
+
+2. **Sonar range + camera bearing** — once the HC-SR04 is in range (~1 m),
+   combining its range reading with the camera's horizontal bearing to the target
+   gives a good polar → cartesian position. No floor-plane assumption needed.
+
+3. **ArUco marker on target** (optional, highest confidence) — if the target object
+   carries an ArUco marker, `solvePnP` gives its full 6-DOF pose directly from a
+   single frame. Sub-centimetre accurate, no estimation required. Useful when the
+   environment is under control (lab / workshop setting).
+
+4. **Parallax from motion** — fallback when the above fail. Drive a small lateral
+   arc; observe how the target shifts in frame. Geometry gives depth. Slower but
+   works on any visible target.
+
+Neural monocular depth (MiDaS, Depth-Anything) is explicitly **not used** — too
+slow on Pi 4 CPU (~1–2 fps) and unnecessary given sonar + floor-plane coverage.
+
+#### Coarse-to-fine engagement model
+
+Each sensor engages at the range where it is actually useful:
+
+```
+Distance to target   Active sensors            What the planner gets
+──────────────────   ────────────────────────  ──────────────────────────────
+> 1 m                Camera only               Bearing (horizontal angle).
+                                               Floor-plane: rough XZ if target
+                                               is on ground. Confidence: LOW.
+                                               Action: turn to face, approach.
+
+20 cm – 1 m          Camera + Sonar            Range + bearing → XZ position.
+                                               IMU heading stabilises estimate.
+                                               Confidence: MEDIUM.
+                                               Action: refine approach, solve IK.
+
+5 – 30 cm            Camera + Sonar + IR       IR confirms proximity. Sonar
+                                               range now accurate at short dist.
+                                               ArUco on target (if present):
+                                               full 6-DOF, highest confidence.
+                                               Confidence: HIGH.
+                                               Action: hand off to planner.
+
+< 30 cm (arm range)  ArUco on arm links        Closed-loop visual servo.
+                                               Planner executes IK + servo loop.
+```
+
+The planner does not need a precise position upfront. It receives a `TargetEstimate`
+with a confidence value and approaches iteratively until confidence is high enough
+to commit to an IK solution:
+
+```
+approach_target(hint):
+    estimate = sensorium.estimate_target(hint)
+    while estimate.confidence < THRESHOLD_TO_PLAN:
+        turn_to(estimate.bearing)          # keep target centred in frame
+        move_base_forward(small_step)      # close distance
+        estimate = sensorium.update()
+    plan = decompose(estimate.position)    # now confident enough for IK
+    executor.run(plan)
+```
+
+#### The Sensorium class
+
+A single background object owns all sensors, runs a continuous update loop at
+each sensor's natural rate, and exposes a fused state to everything above it.
+All other modules read from it — nothing queries hardware directly.
+
+```python
+class Sensorium:
+    """
+    Owns all environment sensors. Runs continuous background update loops.
+    Exposes a fused estimate of robot state and target position.
+
+    Sensor update rates:
+      Camera + ArUco : ~20 fps  (one thread, one core)
+      IMU (MPU-6050) : 50 Hz    (I2C polling, negligible CPU)
+      Sonar (HC-SR04): 10 Hz    (GPIO timing, negligible CPU)
+      IR × 2         : 20 Hz    (GPIO read, negligible CPU)
+    """
+
+    def get_state(self) -> RobotState:
+        # heading, arm_pose, obstacle_near, active sensor set
+
+    def estimate_target(self, hint=None) -> TargetEstimate:
+        # position (x,y,z), bearing, range, confidence, method used
+```
+
+Fusion priority (highest confidence wins):
+1. ArUco on target → full 6-DOF via `solvePnP`
+2. Sonar range + camera bearing → polar → cartesian
+3. Floor-plane homography → XZ from camera + IMU tilt
+4. Camera bearing only → direction, no depth
+
+#### Pi 4 feasibility
+
+| Task | CPU cost | Core assignment |
+|------|----------|-----------------|
+| ArUco detection @ 640×480 | ~50 ms/frame (20 fps) | Core 0 |
+| Floor-plane estimation | < 2 ms (numpy ray-cast) | Core 0 (same frame) |
+| IMU polling @ 50 Hz | negligible (I2C) | Core 1 |
+| Sonar ranging @ 10 Hz | negligible (GPIO) | Core 1 |
+| IR polling @ 20 Hz | negligible (GPIO) | Core 1 |
+| Fusion update @ 10 Hz | < 1 ms | Core 1 |
+| Safety watchdog | already running | Core 2 |
+| Planner / MCP | on demand | Core 3 |
+
+Entirely feasible. The Pi 4 has 4 cores; camera owns one, all lightweight sensors
+share another, safety and planner take the rest.
+
+#### Module structure
+
+```
+argos/
+  sensorium/
+    __init__.py
+    fusion.py       # Sensorium — background update loop, fused state
+    floor_plane.py  # Camera + IMU → XZ ground-plane position estimate
+    imu.py          # MPU-6050 driver (I2C 0x68, Waveshare expansion header)
+    sonar.py        # HC-SR04 driver (TRIG=BOARD 29, ECHO=BOARD 31, divider fitted)
+    ir.py           # IR proximity drivers (CN8=BOARD 12, CN9=BOARD 7)
+    target.py       # TargetEstimate dataclass + confidence model
+```
+
+`argos/vision/` handles camera capture and ArUco detection — `Sensorium` imports
+from it rather than duplicating. `Sensorium` is the integration layer.
+
+#### Calibration required (one-time, on hardware)
+
+| Parameter | Purpose | Method |
+|-----------|---------|--------|
+| Camera intrinsics | All vision | Checkerboard + `cv2.calibrateCamera` |
+| Camera height + tilt | Floor-plane homography | Measure physically, verify with known-distance floor target |
+| IMU gyro bias | Heading drift correction | Average gyro reading at rest over 5 s |
+| Sonar beam characterisation | Confidence at angle | Move known object laterally, note range falloff |
+| IR trigger distance | Confidence threshold | Move known object toward sensor, note activation distance |
 
 ---
 

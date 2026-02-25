@@ -31,6 +31,13 @@ argos/
     camera.py         # [planned] USB webcam capture (OpenCV VideoCapture)
     aruco.py          # [planned] ArUco detection, joint angle extraction
     calibration/      # [planned] Camera intrinsics + distortion data
+  sensorium/
+    fusion.py         # [planned] Sensorium — fused state from all sensors
+    floor_plane.py    # [planned] Monocular XZ estimation via ground-plane ray-cast
+    imu.py            # [planned] MPU-6050 driver (I2C 0x68)
+    sonar.py          # [planned] HC-SR04 driver (BOARD 29/31, divider fitted)
+    ir.py             # [planned] IR proximity drivers (BOARD 7/12)
+    target.py         # [planned] TargetEstimate dataclass + confidence model
   planner/
     goal.py           # [planned] Goal dataclass (target xyz, grip, tolerance)
     decompose.py      # [planned] Decompose 3D goal → base moves + arm angles
@@ -205,6 +212,32 @@ Joint limits for safety layer (use measured values, not spec):
 | Elbow    | 260°           | 260°         |
 | Wrist    | 100°           | 100°         |
 | Gripper  | 0–4.5 cm       | —            |
+
+---
+
+## Sensorium (planned)
+
+Owns all environment-facing sensors and exposes a single fused `TargetEstimate`
+to the planner. Implements a coarse-to-fine target acquisition model — the planner
+does not need precise coordinates upfront, just enough to start moving.
+
+```
+Distance    Active sensors              Confidence
+────────    ──────────────────────────  ──────────
+> 1 m       Camera bearing only         LOW — approach
+            + floor-plane if on ground
+20–100 cm   Camera + sonar              MEDIUM — refine
+5–30 cm     Camera + sonar + IR         HIGH — plan
+            + ArUco on target (if any)  HIGHEST
+```
+
+Key technique: **floor-plane homography** — with calibrated camera height/tilt and
+IMU roll/pitch, any floor-point pixel ray-casts to an XZ ground position without
+stereo. Sonar range + camera bearing gives polar → cartesian for non-floor targets.
+Neural depth (MiDaS etc.) explicitly excluded — too slow on Pi 4 CPU.
+
+See `docs/roadmap.md` — Phase 2f for full design, module structure, Pi 4 thread
+budget, and calibration requirements.
 
 ---
 
