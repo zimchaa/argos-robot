@@ -11,11 +11,12 @@ Speed is always above +/-min_speed (never near zero).
 """
 
 import sys
+import pathlib
 import random
 import subprocess
 import argparse
 
-sys.path.insert(0, "/home/zimchaa/argos")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from argos.config import TRACK_MOTORS, ARM_JOINTS
 

@@ -13,10 +13,11 @@ Be ready to Ctrl-C at any time.
 """
 
 import sys
+import pathlib
 import time
 import datetime
 
-sys.path.insert(0, "/home/zimchaa/argos")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import smbus2
 import RPi.GPIO as GPIO
