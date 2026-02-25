@@ -122,7 +122,130 @@ chassis side rail
 
 ---
 
-### Phase 2c — Safety upgrade (vision-based)
+### Phase 2c — Planner (base + arm coordination)
+
+**Goal:** `move_arm(x, y, z, grip)` achieves any reachable target in 3D space by
+coordinating base movement and arm IK together, running entirely on the Pi.
+
+#### The workspace insight
+
+The arm is a 2D planar manipulator — it can only reach points in the vertical plane
+aligned with the robot's forward axis. On its own this is a severe limitation.
+With the tracked base underneath it, that plane can be aimed at any horizontal
+direction and positioned at any standoff distance. The combined reachable workspace
+becomes: **any point where height ≤ ~39 cm** (shoulder height + full arm reach ~30 cm).
+The base's job is to get the target into the arm's plane at the right distance; the
+arm's job is to reach it in 2D.
+
+#### Coordinate system
+
+All planner coordinates are **robot-relative**:
+
+```
+Y (up)
+│
+│    Z (forward — arm plane)
+│   /
+│  /
+└──────── X (right)
+
+Origin: robot centre at ground level.
+Shoulder pivot: (0, shoulder_height, shoulder_forward_offset) in this frame.
+```
+
+The LLM calls `move_arm(x, y, z, grip)` with robot-relative coordinates.
+If the camera identifies a target object in the scene, its position is expressed
+in this frame using the ArUco reference frame.
+
+#### Goal decomposition
+
+```
+Given target (x, y, z) in robot frame:
+
+1. TURN — rotate base to face target
+   heading_error = atan2(x, z)
+   if |heading_error| > threshold:
+       turn_base(heading_error)          ← IMU feedback for accuracy
+   # After turn: target is now directly ahead (x ≈ 0, z = sqrt(x²+z²))
+
+2. DRIVE — adjust standoff distance
+   r_target       = sqrt(x² + z²)       ← horizontal distance to target
+   r_arm          = r_target − shoulder_forward_offset
+   [r_min, r_max] = IK feasible envelope (~3–30 cm from shoulder)
+   if r_arm < r_min: move_base_forward(r_min − r_arm)   ← back up
+   if r_arm > r_max: move_base_forward(r_arm − r_max)   ← drive in
+
+3. SOLVE — 2D inverse kinematics
+   (θ_shoulder, θ_elbow, θ_wrist) = ik.solve(r_arm, y)
+   Select optimal candidate: minimise max(Δθ) from current pose
+
+4. REACH — closed-loop arm execution
+   loop until all joints within tolerance OR timeout:
+       current = aruco.get_joint_angles()
+       for each joint:
+           error = target_angle − current_angle
+           if |error| > tolerance:
+               speed = clamp(error × Kp, min_speed, max_speed)
+               safety.arm[joint].run(±speed)
+           else:
+               safety.arm[joint].stop()
+   safety.arm.stop()
+
+5. GRIP
+   safety.arm.gripper.run(close_speed if grip else open_speed)
+   sleep(gripper_duration)
+   safety.arm.gripper.stop()
+```
+
+Steps 1–2 use dead reckoning (IMU for turns, time-based for distance).
+Step 4 uses ArUco visual feedback — this corrects any residual positioning error
+from steps 1–2. The arm's servo loop is the error corrector for the base's imprecision.
+
+#### Fallback behaviour
+
+- **ArUco markers not visible**: fall back to open-loop time-based execution,
+  capped at a short duration. Log a warning.
+- **IK has no solution**: return error to caller immediately, do not move.
+- **Safety watchdog fires during execution**: the plan aborts. Report which motor
+  timed out. Caller (MCP tool) returns an error string.
+- **Tolerance not reached within timeout**: stop all joints, return partial success
+  with the actual final pose from ArUco.
+
+#### Module structure
+
+```
+argos/
+  planner/
+    __init__.py
+    goal.py        # Goal dataclass: target (x,y,z), grip, tolerance, timeout
+    decompose.py   # world goal → (base_steps, arm_target_angles)
+    executor.py    # execute a decomposed plan; feedback loops for base + arm
+```
+
+The MCP tool becomes a thin wrapper:
+
+```python
+@mcp.tool()
+def move_arm(x: float, y: float, z: float, grip: bool) -> str:
+    goal   = Goal(position=(x, y, z), grip=grip)
+    plan   = decompose(goal, shoulder_offset=SHOULDER_OFFSET)
+    result = executor.run(plan, safety, aruco, odometry)
+    return result.status   # "ok" | "ik_no_solution" | "timeout" | "safety_stop"
+```
+
+#### Open values to calibrate on hardware
+
+| Parameter | Description | How to measure |
+|-----------|-------------|----------------|
+| `shoulder_forward_offset` | Distance from robot centre to shoulder pivot along Z | Measure on hardware |
+| `r_min` | Minimum IK-feasible arm reach | Test IK solver with link lengths |
+| `Kp` | Proportional gain for joint servo loop | Tune empirically — start low (~0.3) |
+| `tolerance_deg` | Joint angle error threshold to declare "reached" | Start at 3°, tighten if ArUco is stable |
+| `base_velocity` | cm/s at a given track speed (for dead reckoning) | Characterise on a measured surface |
+
+---
+
+### Phase 2d — Safety upgrade (vision-based)
 
 **Goal:** stop arm automatically if any joint approaches its mechanical limit.
 

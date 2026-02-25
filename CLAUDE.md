@@ -31,6 +31,10 @@ argos/
     camera.py         # [planned] USB webcam capture (OpenCV VideoCapture)
     aruco.py          # [planned] ArUco detection, joint angle extraction
     calibration/      # [planned] Camera intrinsics + distortion data
+  planner/
+    goal.py           # [planned] Goal dataclass (target xyz, grip, tolerance)
+    decompose.py      # [planned] Decompose 3D goal → base moves + arm angles
+    executor.py       # [planned] Execute plan with ArUco + IMU feedback loops
   mcp/
     server.py         # [planned] MCP tool definitions
     __main__.py       # [planned] python -m argos.mcp entry point
@@ -201,6 +205,30 @@ Joint limits for safety layer (use measured values, not spec):
 | Elbow    | 260°           | 260°         |
 | Wrist    | 100°           | 100°         |
 | Gripper  | 0–4.5 cm       | —            |
+
+---
+
+## Planner layer (planned)
+
+Sits between the MCP server and the safety layer. Decomposes a 3D goal into base
+movements + arm joint targets, then executes them with feedback loops. Runs entirely
+on the Pi — no LLM inference required during execution.
+
+```
+move_arm(x, y, z, grip)
+    │
+    ├─ 1. Turn base to face target         ← IMU gyro feedback (MPU-6050)
+    ├─ 2. Drive to correct standoff        ← time-based dead reckoning
+    ├─ 3. Solve 2D IK → joint angles       ← kinematics.py (Debenec algorithm)
+    ├─ 4. Servo arm to target angles       ← ArUco visual feedback (closed loop)
+    └─ 5. Actuate gripper
+```
+
+The arm's visual servo loop corrects residual base positioning error.
+The time-based safety watchdog remains as a backstop if ArUco is occluded.
+
+See `docs/roadmap.md` — Phase 2c for full algorithm, coordinate system,
+fallback behaviour, and calibration parameters.
 
 ---
 
