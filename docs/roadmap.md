@@ -26,7 +26,7 @@ These are blocking or near-blocking items for the next build phase.
 | 1 | USB webcam (720p+) | Arm vision / ArUco detection | OpenCV `VideoCapture`. Ball-head mount for angle adjustment. 640×480 sufficient; 720p preferred. | ~£15 |
 | 2 | Camera boom bracket | Mount camera lateral to arm | See design options below | £0–5 |
 | 3 | ArUco marker sheet (printed) | Joint pose tracking | Print `DICT_4X4_50` markers on paper, laminate or use self-adhesive label stock. Sizes: 30/25/20/15 mm per link. | ~£0 |
-| 4 | MPU-6050 IMU | Gyro for turn angle / base odometry | I2C at 0x68 — no conflict with 0x40. Plugs into Waveshare I2C expansion header (5-pin P?). | ~£3 |
+| 4 | MPU-6050 IMU | Heading tracking + tilt correction for floor-plane | I2C at 0x68 — no conflict with 0x40. Plugs into Waveshare I2C expansion header (5-pin P?). Driver lives in `sensorium/imu.py`. | ~£3 |
 | 5 | HC-SR04 ultrasonic sensor | Obstacle detection (safety before autonomous nav) | Voltage divider already fitted on MotorShield CN10. Plug straight in. TRIG=BOARD 29, ECHO=BOARD 31. | ~£2 |
 
 ---
@@ -229,7 +229,7 @@ The MCP tool becomes a thin wrapper:
 def move_arm(x: float, y: float, z: float, grip: bool) -> str:
     goal   = Goal(position=(x, y, z), grip=grip)
     plan   = decompose(goal, shoulder_offset=SHOULDER_OFFSET)
-    result = executor.run(plan, safety, aruco, odometry)
+    result = executor.run(plan, safety, sensorium)
     return result.status   # "ok" | "ik_no_solution" | "timeout" | "safety_stop"
 ```
 
@@ -256,26 +256,7 @@ def move_arm(x: float, y: float, z: float, grip: bool) -> str:
 
 ---
 
-### Phase 2e — Odometry
-
-**Goal:** `move_base_forward(cm)` and `turn_base(degrees)` with reasonable accuracy.
-
-**Initial approach (no new hardware):** time-based dead reckoning.
-- Characterise speed vs actual velocity on the real surface.
-- `move_base_forward(cm)`: run at calibrated speed for `cm / velocity` seconds.
-- `turn_base(degrees)`: run pivot at calibrated speed for `degrees / rate` seconds.
-- Known limitation: right track drift — will need per-track speed calibration.
-
-**With MPU-6050 (recommended upgrade):**
-- I2C at 0x68, no conflict. Plug into Waveshare I2C expansion header.
-- Library: `smbus2` (already a dependency) or `mpu6050-raspberrypi`.
-- Gyro Z gives turn rate → integrate for heading → stop when target heading reached.
-- Accelerometer X gives forward motion estimate (noisy, but better than nothing).
-- `argos/base/odometry.py`: `Odometry` class wrapping the IMU.
-
----
-
-### Phase 2f — Sensorium (coarse-to-fine target acquisition)
+### Phase 2e — Sensorium (coarse-to-fine target acquisition)
 
 **Goal:** give the planner a way to find a target in 3D space without needing the
 LLM to supply exact coordinates — starting rough from camera bearing alone and

@@ -91,8 +91,9 @@ python3 tests/jig.py                      # random motor sequence
 | 1 | Drivers, controllers, safety layer, hardware bring-up | **Done** |
 | 2a | Vision — USB webcam + ArUco arm pose tracking | Next |
 | 2b | Kinematics — FK + IK for `move_arm(x, y, z)` | Planned |
-| 2c | Safety upgrade — vision-based joint angle limits | Planned |
-| 2d | Odometry — IMU (MPU-6050) for `turn_base(degrees)` | Planned |
+| 2c | Planner — coordinated base + arm goal execution | Planned |
+| 2d | Safety upgrade — vision-based joint angle limits | Planned |
+| 2e | Sensorium — coarse-to-fine target acquisition (IMU, sonar, IR, floor-plane) | Planned |
 | 3 | MCP server — expose tools to remote LLM over network | Planned |
 
 See [`docs/roadmap.md`](docs/roadmap.md) for the full forward plan including hardware procurement and camera boom design options.

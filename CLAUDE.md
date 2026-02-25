@@ -21,7 +21,6 @@ argos/
     gpio_motor.py     # GPIOMotor (arm joints, via SB Components MotorShield)
   base/
     tracks.py         # TrackedBase — differential drive controller
-    odometry.py       # [planned] Dead-reckoning / IMU-based odometry
   arm/
     joints.py         # RobotArm — 4 named joint attributes (shoulder/elbow/wrist/gripper)
     kinematics.py     # [planned] FK + IK (see docs/owi535_ik_reference.md)
@@ -41,7 +40,7 @@ argos/
   planner/
     goal.py           # [planned] Goal dataclass (target xyz, grip, tolerance)
     decompose.py      # [planned] Decompose 3D goal → base moves + arm angles
-    executor.py       # [planned] Execute plan with ArUco + IMU feedback loops
+    executor.py       # [planned] Execute plan with ArUco + Sensorium feedback
   mcp/
     server.py         # [planned] MCP tool definitions
     __main__.py       # [planned] python -m argos.mcp entry point
@@ -236,7 +235,7 @@ IMU roll/pitch, any floor-point pixel ray-casts to an XZ ground position without
 stereo. Sonar range + camera bearing gives polar → cartesian for non-floor targets.
 Neural depth (MiDaS etc.) explicitly excluded — too slow on Pi 4 CPU.
 
-See `docs/roadmap.md` — Phase 2f for full design, module structure, Pi 4 thread
+See `docs/roadmap.md` — Phase 2e for full design, module structure, Pi 4 thread
 budget, and calibration requirements.
 
 ---
