@@ -218,16 +218,66 @@ Vertical-plane serial chain: all joints rotate in the same plane.
 - **Wrist**: tilts the end effector
 - **Gripper**: opens/closes (binary open/close or speed-controlled)
 
-### Inverse kinematics
-With a planar 3-link arm (shoulder + elbow + wrist in one plane), IK reduces
-to a 2D problem: given a target end-effector position (r, z) and orientation,
-solve for shoulder and elbow angles analytically, then wrist compensates.
-Exact link lengths TBD — to be measured on hardware and stored as constants.
+### Arm origin
+
+The arm is a cannibalised **OWI-535 Robotic Arm Edge** (sold in the UK by Maplin).
+Original motors and control board discarded; DC motors rewired to the SB Components
+MotorShield. The mechanical structure (links, joints, gripper) is original OWI-535.
+
+### Link lengths (measured on hardware 2026-02-25)
+
+| Segment | From | To | Length |
+|---------|------|----|--------|
+| L1 | Shoulder joint centre | Elbow pivot centre | 9.0 cm |
+| L2 | Elbow pivot centre | Wrist pivot centre | 11.3 cm |
+| L3 | Wrist pivot centre | Gripper tip (closed) | 10.5 cm |
+
+All three segments measured directly on the assembled hardware.
+
+### Shoulder height from ground
+
+The shoulder pivot is approximately **9 cm** above the ground/mounting surface.
+(Original OWI-535 was 7 cm — 5 cm base + 2 cm to shoulder pivot. ARGOS mounting
+differs.)
+
+### OWI-535 joint angle limits
+
+| Joint    | Spec  | Measured (paper) | Use for safety limits |
+|----------|-------|------------------|-----------------------|
+| Shoulder | 180°  | 194°             | 180° |
+| Elbow    | 300°  | 260°             | 260° |
+| Wrist    | 120°  | 100°             | 100° |
+| Gripper  | —     | 0–4.5 cm opening | — |
+
+Use measured values (from Debenec 2015) for safety layer limits — they are
+tighter than spec and reflect what the hardware actually achieves.
+ARGOS has no base rotation joint — the base is fixed.
+
+### Inverse kinematics approach
+
+Reference: `docs/owi535_ik_reference.md` (extracted from Debenec 2015, University of Ljubljana).
+
+Since ARGOS has no base rotation joint, the full IK is a **2D planar problem**:
+given target (r, h) — horizontal distance and height — solve for shoulder, elbow,
+and wrist angles.
+
+**Algorithm (from Debenec):**
+- Shoulder (joint 2): iterative sweep 0°→180° in 5° steps (~36 candidates)
+- Elbow (joint 3): solved analytically via law of cosines for each shoulder candidate
+- Wrist (joint 4): solved analytically as the residual angle
+- Each candidate verified with FK; invalid (out-of-limits) solutions discarded
+- Optimal solution: minimise `max(Δθ_shoulder, Δθ_elbow, Δθ_wrist)` from current pose
+
+**L4 note:** paper gives 6.7 cm (wrist joint to gripper); ARGOS measured 10.5 cm
+(wrist to gripper tip). Use 10.5 cm for end-effector position targets.
+
+Expected open-loop accuracy: ~1.2 cm average Euclidean error (paper result).
+Visual feedback via ArUco markers should correct systematic mechanical errors.
 
 ### Planned modules
 ```
 argos/arm/
-  kinematics.py   # Forward + inverse kinematics, link length constants
+  kinematics.py   # FK + IK, link length constants, coordinate transforms
 ```
 
 ---
