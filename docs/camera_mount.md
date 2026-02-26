@@ -90,11 +90,11 @@ Fill these in once measured on hardware:
 |-----------|-------|
 | Chassis width (outer track to outer track) | ___ mm |
 | Chassis length | ___ mm |
-| Arm base (shoulder pivot) height above deck | ___ mm |
-| Shoulder → elbow link length | ___ mm |
-| Elbow → wrist link length | ___ mm |
-| Wrist → gripper tip length | ___ mm |
-| Total arm reach (shoulder to gripper, fully extended) | ___ mm |
+| Arm base (shoulder pivot) height above deck | ~90 mm (measured 2026-02-25) |
+| Shoulder → elbow link length (L2) | 90 mm (measured 2026-02-25) |
+| Elbow → wrist link length (L3) | 113 mm (measured 2026-02-25) |
+| Wrist → gripper tip length (L4) | 105 mm (measured 2026-02-25) |
+| Total arm reach (shoulder to gripper, fully extended) | ~308 mm (L2+L3+L4) |
 | Arm link width (flat panel width for ArUco marker) | ___ mm |
 
 ---

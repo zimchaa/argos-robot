@@ -17,10 +17,11 @@ The reported "clamped" value shows what the motor will actually receive.
 """
 
 import sys
+import pathlib
 import time
 import argparse
 
-sys.path.insert(0, "/home/zimchaa/argos")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from argos.safety.monitor import SafetyMonitor, _clamp_speed
 from argos.config import TRACK_MOTORS, ARM_JOINTS
