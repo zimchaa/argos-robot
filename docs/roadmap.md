@@ -12,7 +12,7 @@ Phase 1 is done. Hardware is partially verified. The safety layer is live.
 | Central config (MotorConfig, pin mappings) | Done |
 | Tracks verified on hardware | Done |
 | Elbow, wrist, gripper verified on hardware | Done |
-| Shoulder — motor 4 fault | Under investigation |
+| Shoulder — motor 4 fault | Resolved (2026-02-26) |
 | Track drift (right slower than left) | Known, deferred |
 
 ---
@@ -431,17 +431,10 @@ All motion tools route through `SafetyMonitor` — safety layer always has autho
 
 ---
 
-### Phase 4 — Shoulder fault investigation
+### Phase 4 — ~~Shoulder fault investigation~~ — RESOLVED (2026-02-26)
 
-The shoulder (motor 4, MotorShield terminal 4) produced no movement during Session 2.
-
-**Checklist:**
-- [ ] Confirm motor 4 terminal wiring: MotorShield terminal 4 → shoulder motor leads
-- [ ] Check for loose connector at terminal block
-- [ ] Test motor in isolation: apply 6V directly to motor leads, confirm it spins
-- [ ] If motor OK: re-run `motor_jog.py gpio 4 60 1.0` and observe terminal block for voltage
-- [ ] If no voltage at terminal: check L293DD IC 2 on MotorShield (motors 3+4 share one IC)
-- [ ] As a last resort: swap shoulder motor to a spare terminal and update config.py accordingly
+Shoulder confirmed working via `motor_jog.py gpio 4 60 1.5`. All four arm joints
+now verified on hardware. No further investigation needed.
 
 ---
 

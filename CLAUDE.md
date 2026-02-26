@@ -282,19 +282,17 @@ Entry point: `python -m argos.mcp`.
 
 ## Development status
 
-Session 3 complete. Hardware bring-up done.
+Session 4 complete. All hardware verified.
 
 **Confirmed working:**
 - Waveshare HAT at I2C 0x40 (`i2cdetect -y 1` verified)
 - Both tracks forward on positive speed; `TrackedBase.forward()` drives together
-- Elbow, wrist, gripper respond correctly
+- All four arm joints confirmed working (2026-02-26): shoulder, elbow, wrist, gripper
 - `SafetyMonitor` speed clamping and watchdog verified via `motor_jog.py`
 
 **Known issues:**
 - **Track drift**: right track (motor 1) runs slower than left at equal power.
   Needs IMU/encoder/visual feedback to compensate.
-- **Shoulder not moving**: motor 4 (MotorShield terminal 4) produced no movement.
-  Investigate connector and mechanical state before use.
 
 ---
 
