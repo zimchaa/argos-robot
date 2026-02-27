@@ -55,6 +55,38 @@
 
 ---
 
+## Session 5 — Vision + sensorium hardware bring-up (2026-02-27)
+
+### What was done
+- Plugged in USB webcam; wrote `argos/vision/camera.py` — `Camera` class wrapping `cv2.VideoCapture`
+- Wrote `tests/test_camera.py` — headless test: 5-frame warm-up, saves `tests/camera_test.jpg`
+- Confirmed all sensorium sensors connected and active on hardware:
+  - **MPU-6050** IMU — I2C 0x68 on Waveshare expansion header (gyro + accel)
+  - **Flotilla Motion ×2** — LSM303D (accel + magnetometer), via Flotilla dock USB
+  - **Flotilla Weather** — BMP280 (temperature + pressure), via Flotilla dock USB
+  - **IR proximity ×2** — BOARD 7 (CN9) and BOARD 12 (CN8)
+  - **Camera** — USB webcam at /dev/video0
+
+### Camera test result
+```
+Resolution : 640 × 480
+FPS        : 30.0
+Frame shape: (480, 640, 3)  dtype=uint8
+```
+
+### What worked
+- Camera opens immediately, warm-up and frame save work correctly
+- All sensorium sensor hardware confirmed present and responsive
+- `argos/vision/` package structure established
+
+### Unresolved
+- Sensorium drivers not yet written: `imu.py`, `flotilla.py`, `ahrs.py`, `sonar.py`, `ir.py`
+- HC-SR04 sonar not yet connected (voltage divider fitted on CN10, pending sensor)
+- Camera calibration (intrinsics) not yet done
+- ArUco detection module (`argos/vision/aruco.py`) not yet written
+
+---
+
 ## Session 3 — Full motor test: all 6 motors verified
 
 ### What was done

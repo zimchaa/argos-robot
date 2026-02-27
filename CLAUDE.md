@@ -27,7 +27,7 @@ argos/
   safety/
     monitor.py        # SafetyMonitor — speed clamping + watchdog (LIVE)
   vision/
-    camera.py         # [planned] USB webcam capture (OpenCV VideoCapture)
+    camera.py         # USB webcam capture (OpenCV VideoCapture) — LIVE
     aruco.py          # [planned] ArUco detection, joint angle extraction
     calibration/      # [planned] Camera intrinsics + distortion data
   sensorium/
@@ -287,17 +287,25 @@ Entry point: `python -m argos.mcp`.
 
 ## Development status
 
-Session 4 complete. All hardware verified.
+Session 5 complete (2026-02-27). All hardware verified. All sensorium sensors connected.
 
 **Confirmed working:**
 - Waveshare HAT at I2C 0x40 (`i2cdetect -y 1` verified)
 - Both tracks forward on positive speed; `TrackedBase.forward()` drives together
 - All four arm joints confirmed working (2026-02-26): shoulder, elbow, wrist, gripper
 - `SafetyMonitor` speed clamping and watchdog verified via `motor_jog.py`
+- **USB webcam** at /dev/video0 — 640×480 @ 30fps confirmed (`tests/test_camera.py`)
+- **MPU-6050 IMU** — connected at I2C 0x68 on Waveshare expansion header
+- **Flotilla Motion ×2** (LSM303D accel + magnetometer) — connected via Flotilla dock USB
+- **Flotilla Weather** (BMP280 temperature + pressure) — connected via Flotilla dock USB
+- **IR proximity ×2** — BOARD 7 (CN9) and BOARD 12 (CN8)
 
 **Known issues:**
 - **Track drift**: right track (motor 1) runs slower than left at equal power.
   Needs IMU/encoder/visual feedback to compensate.
+
+**Pending hardware:**
+- HC-SR04 sonar — voltage divider fitted on CN10 (BOARD 29/31), sensor not yet acquired.
 
 ---
 

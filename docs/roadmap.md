@@ -1,8 +1,8 @@
 # ARGOS — Roadmap and Forward Plan
 
-## Current state (Session 3 complete)
+## Current state (Session 5 complete, 2026-02-27)
 
-Phase 1 is done. Hardware is partially verified. The safety layer is live.
+Phase 1 complete. Vision package started. All sensorium hardware confirmed connected.
 
 | Item | Status |
 |------|--------|
@@ -11,9 +11,15 @@ Phase 1 is done. Hardware is partially verified. The safety layer is live.
 | SafetyMonitor (speed clamping + watchdog) | Done |
 | Central config (MotorConfig, pin mappings) | Done |
 | Tracks verified on hardware | Done |
-| Elbow, wrist, gripper verified on hardware | Done |
-| Shoulder — motor 4 fault | Resolved (2026-02-26) |
+| All arm joints (shoulder/elbow/wrist/gripper) verified | Done |
 | Track drift (right slower than left) | Known, deferred |
+| USB webcam — confirmed 640×480 @ 30fps | Done |
+| `argos/vision/camera.py` — Camera class | Done |
+| MPU-6050 IMU — connected, I2C 0x68 | Confirmed connected |
+| Flotilla Motion ×2 (LSM303D) — via dock USB | Confirmed connected |
+| Flotilla Weather (BMP280) — via dock USB | Confirmed connected |
+| IR proximity ×2 (BOARD 7, BOARD 12) | Confirmed connected |
+| HC-SR04 sonar — voltage divider fitted | Pending (sensor not yet acquired) |
 
 ---
 
@@ -23,10 +29,10 @@ These are blocking or near-blocking items for the next build phase.
 
 | Priority | Item | Purpose | Notes | Est. cost |
 |----------|------|---------|-------|-----------|
-| 1 | USB webcam (720p+) | Arm vision / ArUco detection | OpenCV `VideoCapture`. Ball-head mount for angle adjustment. 640×480 sufficient; 720p preferred. | ~£15 |
+| ~~1~~ | ~~USB webcam (720p+)~~ | ~~Arm vision / ArUco detection~~ | **Done** — confirmed 640×480 @ 30fps at /dev/video0 | ~~£15~~ |
 | 2 | Camera boom bracket | Mount camera lateral to arm | See design options below | £0–5 |
 | 3 | ArUco marker sheet (printed) | Joint pose tracking | Print `DICT_4X4_50` markers on paper, laminate or use self-adhesive label stock. Sizes: 30/25/20/15 mm per link. | ~£0 |
-| 4 | MPU-6050 IMU | Gyroscope for heading rate + arm servo loop | I2C at 0x68 — no conflict with 0x40. Plugs into Waveshare I2C expansion header. Provides gyro (which Flotilla LSM303D lacks) — combined with Flotilla Motion modules gives full 9DOF AHRS. Driver in `sensorium/imu.py`. | ~£3 |
+| ~~4~~ | ~~MPU-6050 IMU~~ | ~~Gyroscope for heading rate + arm servo loop~~ | **Done** — confirmed at I2C 0x68 on Waveshare expansion header | ~~£3~~ |
 | 5 | HC-SR04 ultrasonic sensor | Obstacle detection (safety before autonomous nav) | Voltage divider already fitted on MotorShield CN10. Plug straight in. TRIG=BOARD 29, ECHO=BOARD 31. | ~£2 |
 
 ### Already in inventory — Pimoroni Flotilla kit
@@ -125,16 +131,16 @@ chassis side rail
 
 ## Software phases
 
-### Phase 2a — Vision (next)
+### Phase 2a — Vision (in progress)
 
 **Goal:** read current arm pose from camera.
 
-1. `argos/vision/camera.py` — `Camera` class wrapping `cv2.VideoCapture`. Frame capture, JPEG encode.
+1. ~~`argos/vision/camera.py`~~ — **Done.** `Camera` class wrapping `cv2.VideoCapture`. Confirmed 640×480 @ 30fps.
 2. `argos/vision/aruco.py` — `ArucoTracker` class. Detect markers, call `cv2.solvePnP` per marker, compute joint angles from adjacent marker relative poses.
 3. `argos/vision/calibration/` — camera calibration routine (checkerboard), store intrinsic matrix + distortion as numpy `.npy` files.
 4. Update `SafetyMonitor` to accept a pose-provider callback — plumbing for Phase 2c.
 
-**Dependency to add:** `opencv-python` (or `opencv-python-headless` on the Pi).
+**Dependency:** `opencv-python-headless` — added to `requirements.txt`.
 
 **Test:** verify joint angle readout against manually measured angles on hardware.
 
