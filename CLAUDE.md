@@ -34,6 +34,8 @@ argos/
     fusion.py         # [planned] Sensorium — fused state from all sensors
     floor_plane.py    # [planned] Monocular XZ estimation via ground-plane ray-cast
     imu.py            # [planned] MPU-6050 driver (I2C 0x68)
+    flotilla.py       # [planned] Flotilla dock wrapper — Motion ×2, Weather, Colour
+    ahrs.py           # [planned] Madgwick filter — MPU-6050 + LSM303D → roll/pitch/yaw
     sonar.py          # [planned] HC-SR04 driver (BOARD 29/31, divider fitted)
     ir.py             # [planned] IR proximity drivers (BOARD 7/12)
     target.py         # [planned] TargetEstimate dataclass + confidence model
@@ -221,22 +223,25 @@ to the planner. Implements a coarse-to-fine target acquisition model — the pla
 does not need precise coordinates upfront, just enough to start moving.
 
 ```
-Distance    Active sensors              Confidence
-────────    ──────────────────────────  ──────────
-> 1 m       Camera bearing only         LOW — approach
+Distance    Active sensors                    Confidence
+────────    ──────────────────────────────    ──────────
+> 1 m       Camera bearing + AHRS heading     LOW — approach
             + floor-plane if on ground
-20–100 cm   Camera + sonar              MEDIUM — refine
-5–30 cm     Camera + sonar + IR         HIGH — plan
-            + ArUco on target (if any)  HIGHEST
+20–100 cm   Camera + sonar + AHRS             MEDIUM — refine
+5–30 cm     Camera + sonar + IR + Colour      HIGH — plan
+            + ArUco on target (if any)        HIGHEST
 ```
 
-Key technique: **floor-plane homography** — with calibrated camera height/tilt and
-IMU roll/pitch, any floor-point pixel ray-casts to an XZ ground position without
-stereo. Sonar range + camera bearing gives polar → cartesian for non-floor targets.
-Neural depth (MiDaS etc.) explicitly excluded — too slow on Pi 4 CPU.
+Key sensors:
+- **AHRS** (Madgwick filter): MPU-6050 gyro + accel + Flotilla LSM303D magnetometer → stable roll/pitch/yaw with absolute compass heading. Corrects gyro drift on turns. Active at all ranges.
+- **Floor-plane homography**: AHRS roll/pitch corrects camera tilt for ground-plane ray-cast. Gives XZ position for floor targets without stereo.
+- **Sonar + camera bearing**: polar → cartesian for non-floor targets.
+- **Colour module** (Flotilla): RGB + ambient light at close range. Object colour ID for task context. Ambient light predicts ArUco detection reliability.
+- **Arm Motion module** (Flotilla, second LSM303D on shoulder link): accelerometer tilt → shoulder joint angle when ArUco is occluded.
+- Neural depth (MiDaS etc.) explicitly excluded — too slow on Pi 4 CPU.
 
 See `docs/roadmap.md` — Phase 2e for full design, module structure, Pi 4 thread
-budget, and calibration requirements.
+budget, calibration requirements, and Flotilla integration details.
 
 ---
 
@@ -303,7 +308,7 @@ smbus2      # I2C for PCA9685
 RPi.GPIO    # GPIO + software PWM for MotorShield
 ```
 
-Planned additions: `opencv-python`, `mcp` (Anthropic).
+Planned additions: `opencv-python`, `mcp` (Anthropic), `flotilla` (Pimoroni — for Flotilla dock + Motion/Weather/Colour modules).
 
 Enable I2C: `raspi-config` → Interface Options → I2C.
 Disable SPI (default) to free MotorShield pins for motors 3 and 4.

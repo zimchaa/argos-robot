@@ -26,8 +26,46 @@ These are blocking or near-blocking items for the next build phase.
 | 1 | USB webcam (720p+) | Arm vision / ArUco detection | OpenCV `VideoCapture`. Ball-head mount for angle adjustment. 640×480 sufficient; 720p preferred. | ~£15 |
 | 2 | Camera boom bracket | Mount camera lateral to arm | See design options below | £0–5 |
 | 3 | ArUco marker sheet (printed) | Joint pose tracking | Print `DICT_4X4_50` markers on paper, laminate or use self-adhesive label stock. Sizes: 30/25/20/15 mm per link. | ~£0 |
-| 4 | MPU-6050 IMU | Heading tracking + tilt correction for floor-plane | I2C at 0x68 — no conflict with 0x40. Plugs into Waveshare I2C expansion header (5-pin P?). Driver lives in `sensorium/imu.py`. | ~£3 |
+| 4 | MPU-6050 IMU | Gyroscope for heading rate + arm servo loop | I2C at 0x68 — no conflict with 0x40. Plugs into Waveshare I2C expansion header. Provides gyro (which Flotilla LSM303D lacks) — combined with Flotilla Motion modules gives full 9DOF AHRS. Driver in `sensorium/imu.py`. | ~£3 |
 | 5 | HC-SR04 ultrasonic sensor | Obstacle detection (safety before autonomous nav) | Voltage divider already fitted on MotorShield CN10. Plug straight in. TRIG=BOARD 29, ECHO=BOARD 31. | ~£2 |
+
+### Already in inventory — Pimoroni Flotilla kit
+
+The Flotilla kit adds several immediately useful sensors. All modules connect via the Flotilla Dock (USB) and are read through the `flotilla-python` library via the Flotilla daemon.
+
+**Motion modules (×2 — LSM303D, accel + magnetometer):**
+
+The Motion module exposes 3-axis acceleration and 3-axis magnetic field, with a built-in tilt-compensated `heading` property. It has no gyroscope — this is why the MPU-6050 is still needed.
+
+Combined sensor roles:
+
+| Source | Data | Role |
+|--------|------|------|
+| MPU-6050 | Accel + Gyro | Angular rate → short-term heading, arm servo smoothing |
+| Flotilla Motion ×1 (body) | Accel + Mag | Absolute compass heading → corrects gyro yaw drift |
+| Flotilla Motion ×1 (arm) | Accel | Link tilt angle → joint angle backup when ArUco occluded |
+
+With all three combined, a Madgwick (or Mahony) complementary filter gives stable roll/pitch/yaw without encoder feedback. This is the primary heading source for the turn step in the planner.
+
+**Arm link placement for second Motion module:**
+Mount on the shoulder–elbow link. Accelerometer tilt gives absolute link angle relative to gravity → directly = shoulder joint angle (arm is a vertical-plane chain). When ArUco is unavailable, this provides a coarse joint angle estimate for the shoulder, the joint with the largest influence on end-effector position.
+
+**Other Flotilla modules — by usefulness:**
+
+| Module | Sensor chip | Data | Use in ARGOS |
+|--------|-------------|------|--------------|
+| Weather | BMP280 | Temperature + pressure | Ambient temperature monitoring; alert if robot enclosure overheats. Pressure not useful indoors. |
+| Colour | — | RGB + ambient light level | Object colour identification at close range (arm engaged). Gives LLM visual context cheaply without a full frame. |
+| Light | — | Ambient lux | Camera auto-exposure context. Know if scene is too dark before attempting ArUco detection. |
+| Motor ×2 | — | DC motor driver | Not used — robot uses Waveshare HAT + MotorShield. |
+| Rainbow / Number / Matrix | — | LED output | Status LEDs / debug display. Useful for showing robot state without a monitor. |
+| Touch | — | Capacitive buttons | Physical emergency stop / mode select button on the chassis. |
+
+**Flotilla software dependency:**
+```
+pip install flotilla
+```
+The `flotillactl` daemon must be running before the Python library can connect. The `Sensorium` startup sequence must launch the daemon if it is not already running, or check its status before connecting modules.
 
 ---
 
@@ -293,27 +331,35 @@ slow on Pi 4 CPU (~1–2 fps) and unnecessary given sonar + floor-plane coverage
 Each sensor engages at the range where it is actually useful:
 
 ```
-Distance to target   Active sensors            What the planner gets
-──────────────────   ────────────────────────  ──────────────────────────────
-> 1 m                Camera only               Bearing (horizontal angle).
-                                               Floor-plane: rough XZ if target
-                                               is on ground. Confidence: LOW.
-                                               Action: turn to face, approach.
+Distance to target   Active sensors                    What the planner gets
+──────────────────   ──────────────────────────────    ──────────────────────────────
+> 1 m                Camera + AHRS (always on)         Bearing (horizontal angle).
+                                                       AHRS heading corrects turn
+                                                       error before approach starts.
+                                                       Floor-plane: rough XZ if target
+                                                       is on ground. Confidence: LOW.
+                                                       Action: turn to face, approach.
 
-20 cm – 1 m          Camera + Sonar            Range + bearing → XZ position.
-                                               IMU heading stabilises estimate.
-                                               Confidence: MEDIUM.
-                                               Action: refine approach, solve IK.
+20 cm – 1 m          Camera + Sonar + AHRS             Range + bearing → XZ position.
+                                                       AHRS yaw (mag-corrected) keeps
+                                                       heading stable during approach.
+                                                       Confidence: MEDIUM.
+                                                       Action: refine approach, solve IK.
 
-5 – 30 cm            Camera + Sonar + IR       IR confirms proximity. Sonar
-                                               range now accurate at short dist.
-                                               ArUco on target (if present):
-                                               full 6-DOF, highest confidence.
-                                               Confidence: HIGH.
-                                               Action: hand off to planner.
+5 – 30 cm            Camera + Sonar + IR + Colour      IR confirms proximity. Sonar
+                     + AHRS                            range accurate at short dist.
+                                                       Colour module: object colour ID
+                                                       for task context (grab the red
+                                                       one). ArUco on target (if
+                                                       present): full 6-DOF, highest
+                                                       confidence. Confidence: HIGH.
+                                                       Action: hand off to planner.
 
-< 30 cm (arm range)  ArUco on arm links        Closed-loop visual servo.
-                                               Planner executes IK + servo loop.
+< 30 cm (arm range)  ArUco on arm links                Closed-loop visual servo.
+                     + arm Motion module               Arm accel backup if ArUco
+                                                       occluded: shoulder angle from
+                                                       link tilt. Planner executes
+                                                       IK + servo loop.
 ```
 
 The planner does not need a precise position upfront. It receives a `TargetEstimate`
@@ -331,6 +377,40 @@ approach_target(hint):
     executor.run(plan)
 ```
 
+#### Flotilla integration — 9DOF AHRS + additional sensors
+
+The Flotilla kit contributes three sensor roles, all accessed through the Flotilla daemon via USB:
+
+**9DOF AHRS (Attitude and Heading Reference System)**
+
+The body-mounted Flotilla Motion module (LSM303D) provides the magnetometer that the MPU-6050 lacks. Combined:
+
+```
+MPU-6050  →  accel (X,Y,Z) + gyro (X,Y,Z)     [I2C]
+LSM303D   →  accel (X,Y,Z) + mag  (X,Y,Z)     [Flotilla USB]
+                    ↓
+           Madgwick filter  →  roll, pitch, yaw (stable, drift-free)
+```
+
+The gyroscope gives fast, accurate angular rate. The magnetometer provides absolute yaw (compass heading) to correct gyro drift over time. The accelerometer (either source, MPU-6050 primary) gives gravity-referenced roll and pitch. The Madgwick filter is a standard complementary filter that runs at ~50 Hz on negligible CPU.
+
+**Impact on turn accuracy:**
+The planned planner step 1 (turn to face target) currently relies on gyro integration alone, which drifts. With magnetometer correction, turns become absolute-heading referenced — a 45° turn means exactly 45°, not "about 45° with drift".
+
+**Arm link angle estimation (second Motion module)**
+
+The arm-mounted LSM303D (mounted on the shoulder–elbow link) measures that link's tilt relative to gravity. For the planar arm (vertical plane only), this equals the shoulder joint's absolute angle. When ArUco is occluded, the planner can use this as a coarse shoulder angle estimate to initialise the servo loop.
+
+Limit: accelerometer-only tilt is only reliable when the arm is stationary (no centripetal acceleration from movement). Use it as a "settle and check" reading, not continuous feedback during motion.
+
+**Weather module (BMP280)**
+
+Temperature is the actionable reading. Tracks ambient temperature around the robot; if it rises unexpectedly during operation, the safety layer can flag it. Useful for extended autonomous sessions where motor heat may accumulate. Update rate: ~1 Hz (BMP280 measurement time ~100 ms).
+
+**Colour module**
+
+At close range (arm engaged, < 30 cm), the colour module provides a fast RGB + ambient light reading. This gives the LLM a colour identification of the object in the gripper zone without needing to transmit a full camera frame. Also useful for knowing ambient light level to predict ArUco detection reliability. Update rate: ~10 Hz.
+
 #### The Sensorium class
 
 A single background object owns all sensors, runs a continuous update loop at
@@ -344,24 +424,32 @@ class Sensorium:
     Exposes a fused estimate of robot state and target position.
 
     Sensor update rates:
-      Camera + ArUco : ~20 fps  (one thread, one core)
-      IMU (MPU-6050) : 50 Hz    (I2C polling, negligible CPU)
-      Sonar (HC-SR04): 10 Hz    (GPIO timing, negligible CPU)
-      IR × 2         : 20 Hz    (GPIO read, negligible CPU)
+      Camera + ArUco       : ~20 fps  (one thread, one core)
+      MPU-6050 (accel+gyro): 50 Hz    (I2C polling, negligible CPU)
+      Flotilla Motion ×2   : ~40 Hz   (USB serial via flotilla daemon)
+      AHRS Madgwick filter : 50 Hz    (runs on fusion thread, < 1 ms)
+      Sonar (HC-SR04)      : 10 Hz    (GPIO timing, negligible CPU)
+      IR × 2               : 20 Hz    (GPIO read, negligible CPU)
+      Flotilla Weather     : 1 Hz     (BMP280 measurement cycle)
+      Flotilla Colour      : 10 Hz    (active only when arm engaged)
     """
 
     def get_state(self) -> RobotState:
-        # heading, arm_pose, obstacle_near, active sensor set
+        # heading (AHRS yaw), roll, pitch, arm_pose, obstacle_near, temp, active sensor set
 
     def estimate_target(self, hint=None) -> TargetEstimate:
-        # position (x,y,z), bearing, range, confidence, method used
+        # position (x,y,z), bearing, range, confidence, method used, colour (if close)
 ```
 
 Fusion priority (highest confidence wins):
 1. ArUco on target → full 6-DOF via `solvePnP`
 2. Sonar range + camera bearing → polar → cartesian
-3. Floor-plane homography → XZ from camera + IMU tilt
+3. Floor-plane homography → XZ from camera + AHRS roll/pitch
 4. Camera bearing only → direction, no depth
+
+Heading (yaw) priority:
+1. AHRS (Madgwick: gyro + mag) — primary at all times
+2. Gyro integration only — fallback if magnetometer readings are corrupted (magnetic interference near motors)
 
 #### Pi 4 feasibility
 
@@ -369,15 +457,25 @@ Fusion priority (highest confidence wins):
 |------|----------|-----------------|
 | ArUco detection @ 640×480 | ~50 ms/frame (20 fps) | Core 0 |
 | Floor-plane estimation | < 2 ms (numpy ray-cast) | Core 0 (same frame) |
-| IMU polling @ 50 Hz | negligible (I2C) | Core 1 |
+| MPU-6050 polling @ 50 Hz | negligible (I2C) | Core 1 |
+| Flotilla daemon (Motion ×2 @ 40 Hz) | negligible (USB serial) | Core 1 |
+| Madgwick AHRS @ 50 Hz | < 1 ms | Core 1 |
 | Sonar ranging @ 10 Hz | negligible (GPIO) | Core 1 |
 | IR polling @ 20 Hz | negligible (GPIO) | Core 1 |
+| Flotilla Weather @ 1 Hz | negligible | Core 1 |
+| Flotilla Colour @ 10 Hz (arm zone) | negligible | Core 1 |
 | Fusion update @ 10 Hz | < 1 ms | Core 1 |
 | Safety watchdog | already running | Core 2 |
 | Planner / MCP | on demand | Core 3 |
 
 Entirely feasible. The Pi 4 has 4 cores; camera owns one, all lightweight sensors
-share another, safety and planner take the rest.
+(I2C, GPIO, Flotilla USB) share another, safety and planner take the rest.
+
+**Note on motor magnetic interference:** The LSM303D magnetometer may be affected
+by the motor current draw when tracks or arm joints are active. Calibration should
+include a hard-iron offset captured with motors running at typical speed. If interference
+is too large, mount the body Motion module as far from the motor electronics as
+practical (rear of chassis, away from Waveshare HAT).
 
 #### Module structure
 
@@ -386,8 +484,10 @@ argos/
   sensorium/
     __init__.py
     fusion.py       # Sensorium — background update loop, fused state
-    floor_plane.py  # Camera + IMU → XZ ground-plane position estimate
+    floor_plane.py  # Camera + AHRS → XZ ground-plane position estimate
     imu.py          # MPU-6050 driver (I2C 0x68, Waveshare expansion header)
+    flotilla.py     # Flotilla dock wrapper — Motion ×2, Weather, Colour, Light
+    ahrs.py         # Madgwick filter — MPU-6050 (accel+gyro) + LSM303D (mag) → roll/pitch/yaw
     sonar.py        # HC-SR04 driver (TRIG=BOARD 29, ECHO=BOARD 31, divider fitted)
     ir.py           # IR proximity drivers (CN8=BOARD 12, CN9=BOARD 7)
     target.py       # TargetEstimate dataclass + confidence model
@@ -402,7 +502,11 @@ from it rather than duplicating. `Sensorium` is the integration layer.
 |-----------|---------|--------|
 | Camera intrinsics | All vision | Checkerboard + `cv2.calibrateCamera` |
 | Camera height + tilt | Floor-plane homography | Measure physically, verify with known-distance floor target |
-| IMU gyro bias | Heading drift correction | Average gyro reading at rest over 5 s |
+| MPU-6050 gyro bias | Heading drift correction | Average gyro reading at rest over 5 s |
+| Magnetometer hard-iron offset | AHRS heading accuracy | Rotate chassis 360° on flat surface, record min/max per axis, compute offset as midpoint |
+| Magnetometer soft-iron matrix | AHRS heading accuracy | Fit ellipsoid to calibration data (use motionpy or manual numpy fitting) |
+| Magnetometer motor interference | AHRS heading under load | Re-run hard-iron calibration with motors running at typical speed; compare offset |
+| Arm Motion module tilt vs. joint angle | Backup joint estimation | With ArUco live: move shoulder to known angles (0°, 45°, 90°), record accelerometer readings, fit mapping function |
 | Sonar beam characterisation | Confidence at angle | Move known object laterally, note range falloff |
 | IR trigger distance | Confidence threshold | Move known object toward sensor, note activation distance |
 
