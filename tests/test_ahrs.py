@@ -1,0 +1,142 @@
+"""
+9DOF AHRS live test for ARGOS.
+
+Reads MPU-6050 (gyro + accel) and Flotilla Motion (magnetometer),
+runs the Madgwick filter, and prints roll/pitch/yaw continuously.
+
+Startup sequence:
+  1. Open MPU-6050 and Flotilla dock.
+  2. Calibrate gyro bias (3 s stationary).
+  3. Run filter at ~50 Hz, printing orientation.
+
+Usage:
+    python3 tests/test_ahrs.py [--imu-only]
+
+    --imu-only   Run 6DOF (no magnetometer). Heading will drift.
+
+Place the robot on a flat, stable surface for gyro calibration.
+"""
+
+import math
+import sys
+import pathlib
+import time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+from argos.sensorium.imu import MPU6050
+from argos.sensorium.ahrs import MadgwickAHRS
+
+RATE_HZ      = 50
+DT           = 1.0 / RATE_HZ
+CALIB_SECS   = 3
+BETA         = 0.05
+IMU_ONLY     = "--imu-only" in sys.argv
+
+
+def calibrate_gyro(imu, seconds):
+    """Average gyro readings at rest to estimate bias (deg/s)."""
+    n = 0
+    sx = sy = sz = 0.0
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        r = imu.read()
+        sx += r.gyro_x_dps
+        sy += r.gyro_y_dps
+        sz += r.gyro_z_dps
+        n += 1
+        time.sleep(0.01)
+    return sx / n, sy / n, sz / n
+
+
+def main():
+    print("ARGOS — 9DOF AHRS test  (Ctrl-C to stop)\n")
+
+    # --- IMU ---
+    imu = MPU6050()
+    print("  MPU-6050 opened at I2C 0x68")
+
+    # --- Flotilla (optional) ---
+    flotilla = None
+    if not IMU_ONLY:
+        try:
+            from argos.sensorium.flotilla import FlotillaReader
+            flotilla = FlotillaReader()
+            flotilla.start()
+            print("  Flotilla dock opened")
+            # Give the reader thread a moment to receive initial updates
+            time.sleep(1.0)
+            m = flotilla.motion
+            if m is None:
+                print("  WARNING: no Motion module detected — running 6DOF")
+            else:
+                print("  Motion module detected — 9DOF mode")
+        except Exception as exc:
+            print(f"  Flotilla not available ({exc}) — running 6DOF")
+            flotilla = None
+
+    if IMU_ONLY:
+        print("  Running in 6DOF mode (--imu-only)")
+
+    # --- gyro calibration ---
+    print(f"\n  Calibrating gyro bias ({CALIB_SECS} s) — keep robot still ...",
+          end="", flush=True)
+    bias_x, bias_y, bias_z = calibrate_gyro(imu, CALIB_SECS)
+    print(" done")
+    print(f"  Bias (°/s):  X={bias_x:+.3f}  Y={bias_y:+.3f}  Z={bias_z:+.3f}\n")
+
+    # --- filter ---
+    ahrs = MadgwickAHRS(beta=BETA)
+
+    print(f"  {'Roll':>8}  {'Pitch':>8}  {'Yaw':>8}  {'Mode':>6}")
+    print(f"  {'(°)':>8}  {'(°)':>8}  {'(°)':>8}")
+    print("  " + "-" * 40)
+
+    try:
+        t_prev = time.monotonic()
+        while True:
+            t_now = time.monotonic()
+            dt = t_now - t_prev
+            t_prev = t_now
+
+            r = imu.read()
+
+            # Gyro in rad/s, bias-corrected
+            gyro = (
+                math.radians(r.gyro_x_dps - bias_x),
+                math.radians(r.gyro_y_dps - bias_y),
+                math.radians(r.gyro_z_dps - bias_z),
+            )
+            accel = (r.accel_x_g, r.accel_y_g, r.accel_z_g)
+
+            # Magnetometer from Flotilla (if available)
+            mag = None
+            mode = "6DOF"
+            if flotilla is not None:
+                m = flotilla.motion
+                if m is not None:
+                    mag = (m.mag_x, m.mag_y, m.mag_z)
+                    mode = "9DOF"
+
+            ahrs.update(gyro=gyro, accel=accel, mag=mag, dt=dt)
+
+            print(f"\r  {ahrs.roll:>+8.2f}  {ahrs.pitch:>+8.2f}  "
+                  f"{ahrs.yaw:>8.2f}  {mode:>6}",
+                  end="", flush=True)
+
+            # Pace the loop
+            elapsed = time.monotonic() - t_now
+            remaining = DT - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
+
+    except KeyboardInterrupt:
+        print("\n\nStopped.")
+    finally:
+        imu.close()
+        if flotilla is not None:
+            flotilla.close()
+
+
+if __name__ == "__main__":
+    main()
