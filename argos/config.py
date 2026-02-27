@@ -59,3 +59,55 @@ SONAR_ECHO_PIN  = 31
 # IR proximity sensors (BOARD pin numbers)
 IR_PIN_1        = 7    # CN9
 IR_PIN_2        = 12   # CN8
+
+# ---------------------------------------------------------------------------
+# Sensor axis remapping — chip frame → AHRS filter frame
+# ---------------------------------------------------------------------------
+# Madgwick filter convention (see argos/sensorium/ahrs.py):
+#   az = +1g when robot is flat;  ax > 0 = nose pitches up;  ay > 0 = right rolls down
+#   i.e.  filter X = forward,  filter Y = right,  filter Z = up
+#
+# Probed 2026-02-27 with probe_sensor_axes.py, robot stationary on flat surface:
+#   MPU-6050     accel: ax = -0.967g → chip +X points DOWN  (= robot −Z)
+#   Body LSM303D accel: ax = -0.999g → chip +X points DOWN  (same mounting as MPU)
+#   Arm  LSM303D accel: ax = +0.966g → chip +X points UP    (inverted mounting vs body)
+#
+# Required remap so Madgwick converges:
+#   filter_az = −chip_ax   (for MPU and body LSM)
+#   filter_az = +chip_ax   (for arm LSM)
+#   Gyro Z must be remapped consistently: filter_gz = −chip_gx (for MPU)
+#
+# Full remap format: ((fx_sign, fx_src), (fy_sign, fy_src), (fz_sign, fz_src))
+#   where src is 0=chip_x, 1=chip_y, 2=chip_z and sign is +1 or −1.
+#   Apply as: filter[i] = sign * chip[src]
+#
+# Gravity axis (Z) is confirmed below.
+# Forward (+X) and lateral (+Y) chip-axis assignments are TBD — re-run
+# probe_sensor_axes.py while tilting the robot forward/backward and
+# left/right, then update the None placeholders with the correct (sign, src).
+
+IMU_AXIS_REMAP = (
+    (None,  None),   # filter X = forward — TBD (tilt test)
+    (None,  None),   # filter Y = right   — TBD (tilt test)
+    (  -1,     0),   # filter Z = −chip_x  (gravity confirmed 2026-02-27)
+)
+
+BODY_MOTION_AXIS_REMAP = (
+    (None,  None),   # filter X — TBD
+    (None,  None),   # filter Y — TBD
+    (  -1,     0),   # filter Z = −chip_x  (same mounting as MPU)
+)
+
+# Magnetometer from body LSM303D feeds directly to the AHRS heading.
+# mx/my/mz axis alignment with the filter frame TBD (needs compass-spin test).
+BODY_MOTION_MAG_REMAP = (
+    (None,  None),
+    (None,  None),
+    (None,  None),
+)
+
+ARM_MOTION_AXIS_REMAP = (
+    (None,  None),   # filter X — TBD
+    (None,  None),   # filter Y — TBD
+    (  +1,     0),   # filter Z = +chip_x  (inverted mounting vs body, confirmed 2026-02-27)
+)
