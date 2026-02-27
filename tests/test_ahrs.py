@@ -102,6 +102,38 @@ def main():
     # --- filter ---
     ahrs = MadgwickAHRS(beta=BETA)
 
+    # Seed quaternion from gravity so the filter is near correct orientation
+    # immediately instead of converging slowly from identity over ~5 s.
+    r0 = imu_read_safe(imu)
+    if r0 is not None:
+        ahrs.init_from_accel(r0.accel_x_g, r0.accel_y_g, r0.accel_z_g)
+
+    # Short warm-up so the filter is settled before we zero it.
+    print("  Levelling (1 s) — keep robot still ...", end="", flush=True)
+    t_lev = time.monotonic()
+    t_prev_lev = t_lev
+    while time.monotonic() - t_lev < 1.0:
+        t_now = time.monotonic()
+        dt_lev = t_now - t_prev_lev
+        t_prev_lev = t_now
+        r = imu_read_safe(imu)
+        if r is None:
+            continue
+        gyro_lev = (
+            math.radians(r.gyro_x_dps - bias_x),
+            math.radians(r.gyro_y_dps - bias_y),
+            math.radians(r.gyro_z_dps - bias_z),
+        )
+        ahrs.update(gyro=gyro_lev,
+                    accel=(r.accel_x_g, r.accel_y_g, r.accel_z_g),
+                    dt=dt_lev)
+        elapsed = time.monotonic() - t_now
+        if DT - elapsed > 0:
+            time.sleep(DT - elapsed)
+
+    roll_off, pitch_off = ahrs.calibrate_level()
+    print(f" done  (mounting offset: roll={roll_off:+.1f}°  pitch={pitch_off:+.1f}°)\n")
+
     print(f"  {'Roll':>8}  {'Pitch':>8}  {'Yaw':>8}  {'Mode':>6}")
     print(f"  {'(°)':>8}  {'(°)':>8}  {'(°)':>8}")
     print("  " + "-" * 40)

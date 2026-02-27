@@ -100,6 +100,8 @@ class MadgwickAHRS:
     def __init__(self, beta: float = 0.05):
         self._beta = beta
         self._q = [1.0, 0.0, 0.0, 0.0]   # [w, x, y, z]
+        self._roll_offset  = 0.0           # degrees — mounting bias zeroed at startup
+        self._pitch_offset = 0.0           # degrees
 
     @property
     def beta(self) -> float:
@@ -110,8 +112,55 @@ class MadgwickAHRS:
         self._beta = value
 
     def reset(self):
-        """Reset orientation to identity (level, heading=0)."""
+        """Reset orientation to identity (level, heading=0) and clear level reference."""
         self._q = [1.0, 0.0, 0.0, 0.0]
+        self._roll_offset  = 0.0
+        self._pitch_offset = 0.0
+
+    def init_from_accel(self, ax: float, ay: float, az: float):
+        """Initialise the quaternion from a gravity vector for instant convergence.
+
+        Instead of starting from identity [1,0,0,0] and waiting ~5 s for the
+        filter to find the correct tilt, compute roll and pitch directly from
+        the accelerometer and set the quaternion to match.  Yaw is left at 0
+        (unknown without a magnetometer).
+
+        Call once after gyro calibration, before the main loop.
+        """
+        norm = math.sqrt(ax * ax + ay * ay + az * az)
+        if norm < 1e-10:
+            return
+        ax /= norm
+        ay /= norm
+        az /= norm
+
+        # Tilt from gravity — matches Madgwick filter's ZYX Euler convention.
+        # ax = -sin(pitch), ay = cos(pitch)*sin(roll), az = cos(pitch)*cos(roll)
+        roll  = math.atan2(ay, az)
+        pitch = math.atan2(-ax, math.sqrt(ay * ay + az * az))
+
+        cr = math.cos(roll  / 2.0)
+        sr = math.sin(roll  / 2.0)
+        cp = math.cos(pitch / 2.0)
+        sp = math.sin(pitch / 2.0)
+
+        # Quaternion for ZYX Euler (yaw=0): q = q_pitch * q_roll
+        self._q = [cp * cr, cp * sr, sp * cr, -sp * sr]
+
+    def calibrate_level(self):
+        """Record the current orientation as the robot's level reference.
+
+        After calling this with the robot sitting flat and still, roll and
+        pitch will read 0 regardless of how the IMU chip is physically
+        mounted on the chassis.  Call after init_from_accel() and a brief
+        warm-up so the filter has settled.
+
+        Returns the detected mounting offsets (roll_deg, pitch_deg) for
+        logging.
+        """
+        self._roll_offset  = self.orientation.roll_deg
+        self._pitch_offset = self.orientation.pitch_deg
+        return self._roll_offset, self._pitch_offset
 
     def update(self, gyro, accel, mag=None, dt: float = 0.02):
         """
@@ -154,13 +203,13 @@ class MadgwickAHRS:
 
     @property
     def roll(self) -> float:
-        """Roll in degrees (-180 to +180)."""
-        return self.orientation.roll_deg
+        """Roll in degrees (-180 to +180), relative to the level reference."""
+        return self.orientation.roll_deg - self._roll_offset
 
     @property
     def pitch(self) -> float:
-        """Pitch in degrees (-90 to +90)."""
-        return self.orientation.pitch_deg
+        """Pitch in degrees (-90 to +90), relative to the level reference."""
+        return self.orientation.pitch_deg - self._pitch_offset
 
     @property
     def yaw(self) -> float:
