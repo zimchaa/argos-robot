@@ -1,3 +1,5 @@
-smbus2
-RPi.GPIO
+# System prerequisites (install via apt, not pip):
+#   sudo apt install python3-rpi.gpio python3-smbus2
+#   or: sudo pip3 install smbus2 RPi.GPIO --break-system-packages
+
 pyserial
