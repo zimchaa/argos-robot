@@ -28,20 +28,22 @@ Two Motion modules are supported; the first seen on the dock becomes
 Scale factors
 -------------
 Raw integer values are stored exactly as the firmware sends them.
-Nominal conversions are provided as properties once the scale has been
-confirmed against hardware readings — see WeatherReading.temperature_c
-and WeatherReading.pressure_hpa.  Motion scale is marked TODO until
-confirmed.
+Confirmed conversions are provided as properties:
+
+- WeatherReading: .temperature_c (raw / 100) and .pressure_hpa (raw / 100)
+- MotionReading:  .acc_{x,y,z}_g (raw / 16384, ±2g full scale confirmed from
+  Pimoroni Motion source).  Magnetometer used raw in atan2 ratios.
 """
 
 from __future__ import annotations
 
 import glob
 import logging
+import math
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import serial
 
@@ -55,16 +57,27 @@ _READ_TIMEOUT = 0.1   # seconds — short so the loop stays responsive
 # Reading dataclasses
 # ---------------------------------------------------------------------------
 
+_ACC_SCALE = 1.0 / 16384.0   # raw counts → g  (±2g full scale, 16-bit signed)
+
+
 @dataclass
 class MotionReading:
-    """Raw LSM303D readings from a Flotilla Motion module.
+    """LSM303D readings from a Flotilla Motion module.
 
-    Values are raw integer counts as sent by the Flotilla firmware.
-    With the board flat and gravity along +Z, acc_z will be a large
-    positive value; acc_x and acc_y will be near zero.
+    Raw integer counts as sent by the Flotilla firmware (16-bit signed).
+    With the board flat and gravity along +Z:
+      - acc_z ≈ +16384 (1 g)
+      - acc_x, acc_y ≈ 0
 
-    Scale factors (to convert to g / gauss) are TBC from hardware
-    readings — run tests/test_flotilla.py and observe.
+    Accelerometer scale: raw / 16384 → g  (±2g full scale).
+    Magnetometer raw counts are used directly — scale cancels in atan2.
+
+    Derived properties
+    ------------------
+    acc_{x,y,z}_g   : accelerometer in g
+    roll_rad         : roll  (rotation about X, rad)
+    pitch_rad        : pitch (rotation about Y, rad)
+    heading          : tilt-compensated magnetic heading, degrees 0–360
     """
     acc_x: int = 0
     acc_y: int = 0
@@ -73,6 +86,98 @@ class MotionReading:
     mag_y: int = 0
     mag_z: int = 0
     timestamp: float = field(default_factory=time.monotonic)
+
+    # --- accelerometer in physical units ------------------------------------
+
+    @property
+    def acc_x_g(self) -> float:
+        return self.acc_x * _ACC_SCALE
+
+    @property
+    def acc_y_g(self) -> float:
+        return self.acc_y * _ACC_SCALE
+
+    @property
+    def acc_z_g(self) -> float:
+        return self.acc_z * _ACC_SCALE
+
+    # --- tilt (roll / pitch) ------------------------------------------------
+
+    def _unit_gravity(self) -> Tuple[float, float, float]:
+        """Return the gravity unit vector (ax, ay, az); (0,0,0) if degenerate."""
+        ax, ay, az = self.acc_x_g, self.acc_y_g, self.acc_z_g
+        mag = math.sqrt(ax * ax + ay * ay + az * az)
+        if mag < 1e-6:
+            return 0.0, 0.0, 0.0
+        return ax / mag, ay / mag, az / mag
+
+    @property
+    def pitch_rad(self) -> float:
+        """Pitch angle in radians (nose-up positive)."""
+        ax, ay, az = self._unit_gravity()
+        try:
+            return math.asin(-ax)
+        except ValueError:
+            return 0.0
+
+    @property
+    def roll_rad(self) -> float:
+        """Roll angle in radians (right-side-down positive)."""
+        ax, ay, az = self._unit_gravity()
+        try:
+            pitch = math.asin(-ax)
+            cp = math.cos(pitch)
+            if abs(cp) >= abs(ay):
+                return math.asin(ay / cp)
+            return math.copysign(math.pi / 2, ay)
+        except ValueError:
+            return 0.0
+
+    # --- heading ------------------------------------------------------------
+
+    @property
+    def heading(self) -> float:
+        """Tilt-compensated magnetic heading, degrees 0–360 clockwise from north.
+
+        Fixes two bugs present in the official Pimoroni Motion.heading:
+
+        1. Normalization: the official code clamps raw counts to ±1 via
+           ``min(fabs(raw), 1.0)``; all values outside ±1 (i.e. every real
+           reading at ±2g full scale) get clamped to ±1.  We normalize to a
+           proper unit vector instead.
+
+        2. tiltcomp_y formula: the official code has a stray ``+ sin(pitch)``
+           term that should be ``* sin(pitch)`` (part of the
+           ``mx·sin(roll)·sin(pitch)`` product got split off).  The correct
+           Freescale AN4248 formula is::
+
+               tiltcomp_y = mx·sin(r)·sin(p) + my·cos(r) - mz·sin(r)·cos(p)
+        """
+        ax, ay, az = self._unit_gravity()
+        if ax == ay == az == 0.0:
+            return 0.0
+        try:
+            pitch = math.asin(-ax)
+            cp = math.cos(pitch)
+            roll = (
+                math.asin(ay / cp)
+                if abs(cp) >= abs(ay)
+                else math.copysign(math.pi / 2, ay)
+            )
+        except ValueError:
+            return 0.0
+
+        sp, sr = math.sin(pitch), math.sin(roll)
+        cp, cr = math.cos(pitch), math.cos(roll)
+        mx, my, mz = self.mag_x, self.mag_y, self.mag_z
+
+        tiltcomp_x = mx * cp + mz * sp
+        tiltcomp_y = mx * sr * sp + my * cr - mz * sr * cp   # fixed formula
+
+        h = math.atan2(tiltcomp_y, tiltcomp_x)
+        if h < 0:
+            h += 2 * math.pi
+        return round(math.degrees(h), 2)
 
 
 @dataclass
