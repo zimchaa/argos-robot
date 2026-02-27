@@ -339,6 +339,20 @@ class FlotillaReader:
         with self._lock:
             return self._motion[1]
 
+    def motion_channel(self, ch: int) -> Optional[MotionReading]:
+        """Return the MotionReading for a specific dock channel number, or None.
+
+        Use this to select a Motion module by its physical port (1–8) rather
+        than relying on arrival order.  Example: ``flotilla.motion_channel(6)``
+        for the body-mounted sensor on port 6.
+        """
+        with self._lock:
+            try:
+                slot = self._motion_ch.index(ch)
+                return self._motion[slot]
+            except ValueError:
+                return None
+
     @property
     def weather(self) -> Optional[WeatherReading]:
         """Latest WeatherReading, or None."""

@@ -7,7 +7,8 @@ runs the Madgwick filter, and prints roll/pitch/yaw continuously.
 Startup sequence:
   1. Open MPU-6050 and Flotilla dock.
   2. Calibrate gyro bias (3 s stationary).
-  3. Run filter at ~50 Hz, printing orientation.
+  3. Initialise filter from gravity + 1 s level calibration.
+  4. Run filter at ~50 Hz, printing orientation.
 
 Usage:
     python3 tests/test_ahrs.py [--imu-only]
@@ -15,6 +16,13 @@ Usage:
     --imu-only   Run 6DOF (no magnetometer). Heading will drift.
 
 Place the robot on a flat, stable surface for gyro calibration.
+
+Sensor roles
+------------
+MPU-6050 (I2C 0x68)          — gyro + accel for the Madgwick filter
+Flotilla Motion ch 6          — body-mounted LSM303D, magnetometer for
+                                9DOF heading.  ch 1 is the arm joint
+                                sensor and must NOT be used here.
 """
 
 import math
@@ -27,11 +35,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from argos.sensorium.imu import MPU6050
 from argos.sensorium.ahrs import MadgwickAHRS
 
-RATE_HZ      = 50
-DT           = 1.0 / RATE_HZ
-CALIB_SECS   = 3
-BETA         = 0.05
-IMU_ONLY     = "--imu-only" in sys.argv
+RATE_HZ           = 50
+DT                = 1.0 / RATE_HZ
+CALIB_SECS        = 3
+BETA              = 0.05
+IMU_ONLY          = "--imu-only" in sys.argv
+BODY_MOTION_CH    = 6   # Flotilla dock port for the body-mounted LSM303D
 
 
 def imu_read_safe(imu):
@@ -80,11 +89,14 @@ def main():
             print("  Flotilla dock opened")
             # Give the reader thread a moment to receive initial updates
             time.sleep(1.0)
-            m = flotilla.motion
+            m = flotilla.motion_channel(BODY_MOTION_CH)
+            chs = flotilla.connected_modules
             if m is None:
-                print("  WARNING: no Motion module detected — running 6DOF")
+                print(f"  WARNING: no Motion on ch {BODY_MOTION_CH} "
+                      f"(connected: {chs}) — running 6DOF")
             else:
-                print("  Motion module detected — 9DOF mode")
+                print(f"  Body Motion on ch {BODY_MOTION_CH} detected — 9DOF mode")
+                print(f"  All channels: {chs}")
         except Exception as exc:
             print(f"  Flotilla not available ({exc}) — running 6DOF")
             flotilla = None
@@ -157,11 +169,11 @@ def main():
             )
             accel = (r.accel_x_g, r.accel_y_g, r.accel_z_g)
 
-            # Magnetometer from Flotilla (if available)
+            # Magnetometer from body-mounted Flotilla Motion (ch 6)
             mag = None
             mode = "6DOF"
             if flotilla is not None:
-                m = flotilla.motion
+                m = flotilla.motion_channel(BODY_MOTION_CH)
                 if m is not None:
                     mag = (m.mag_x, m.mag_y, m.mag_z)
                     mode = "9DOF"
