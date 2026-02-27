@@ -79,8 +79,8 @@ class MotionReading:
 class WeatherReading:
     """Raw readings from a Flotilla Weather module.
 
-    temperature_raw: tenths of °C (e.g. 215 → 21.5 °C)
-    pressure_raw:    Pascals      (e.g. 101325 → 1013.25 hPa)
+    temperature_raw: hundredths of °C (e.g. 2062 → 20.62 °C)
+    pressure_raw:    Pascals          (e.g. 101325 → 1013.25 hPa)
 
     Use .temperature_c and .pressure_hpa for converted values.
     Confirm the pressure scale against a known reading if needed.
@@ -91,7 +91,7 @@ class WeatherReading:
 
     @property
     def temperature_c(self) -> float:
-        return self.temperature_raw / 10.0
+        return self.temperature_raw / 100.0
 
     @property
     def pressure_hpa(self) -> float:
