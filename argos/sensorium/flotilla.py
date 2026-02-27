@@ -205,6 +205,10 @@ class FlotillaReader:
         """Start the background reader thread.  Returns self for chaining."""
         self._running = True
         self._thread.start()
+        # Ask the dock to re-announce all connected modules.  The dock sends
+        # 'c channel/module' lines at boot, before we are listening; 'e' makes
+        # it repeat them so connected_modules is populated immediately.
+        self._serial.write(b"e\r\n")
         return self
 
     def close(self):
@@ -277,19 +281,31 @@ class FlotillaReader:
         # '#' info lines, 'v' version lines: silently ignored
 
     def _on_connect(self, rest: str):
-        parts = rest.split()
-        if len(parts) < 2:
+        # Protocol: "c <channel>/<module_type>"
+        rest = rest.strip()
+        if "/" in rest:
+            ch_str, mod = rest.split("/", 1)
+        else:
+            parts = rest.split()
+            if len(parts) < 2:
+                return
+            ch_str, mod = parts[0], parts[1]
+        try:
+            ch = int(ch_str)
+        except ValueError:
             return
-        ch, mod = int(parts[0]), parts[1]
         with self._lock:
             self._modules[ch] = mod
         log.info("Flotilla: %-12s connected on channel %d", mod, ch)
 
     def _on_disconnect(self, rest: str):
-        parts = rest.split()
-        if not parts:
+        # Protocol: "d <channel>/<module_type>" or "d <channel>"
+        rest = rest.strip()
+        ch_str = rest.split("/")[0].split()[0]
+        try:
+            ch = int(ch_str)
+        except ValueError:
             return
-        ch = int(parts[0])
         with self._lock:
             mod = self._modules.pop(ch, "?")
             for i, mch in enumerate(self._motion_ch):
@@ -299,11 +315,23 @@ class FlotillaReader:
         log.info("Flotilla: channel %d (%s) disconnected", ch, mod)
 
     def _on_update(self, rest: str):
-        # rest = "<channel> <module_type> <csv_data>"
-        parts = rest.split(" ", 2)
-        if len(parts) < 3:
+        # Protocol: "u <channel>/<module_type> <csv_data>"
+        parts = rest.split(" ", 1)
+        if len(parts) < 2:
             return
-        ch, mod_type, data = int(parts[0]), parts[1], parts[2]
+        ch_mod, data = parts[0], parts[1]
+        if "/" not in ch_mod:
+            return
+        ch_str, mod_type = ch_mod.split("/", 1)
+        try:
+            ch = int(ch_str)
+        except ValueError:
+            return
+        # Auto-register from update if the c-announce was missed at boot
+        with self._lock:
+            if ch not in self._modules:
+                self._modules[ch] = mod_type
+                log.info("Flotilla: %-12s auto-registered on channel %d", mod_type, ch)
 
         parser = _PARSERS.get(mod_type)
         if parser is None:
