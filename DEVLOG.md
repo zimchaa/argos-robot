@@ -79,9 +79,18 @@ Frame shape: (480, 640, 3)  dtype=uint8
 - All sensorium sensor hardware confirmed present and responsive
 - `argos/vision/` package structure established
 
-### Unresolved
-- Sensorium drivers not yet written: `imu.py`, `flotilla.py`, `ahrs.py`, `sonar.py`, `ir.py`
-- HC-SR04 sonar not yet connected (voltage divider fitted on CN10, pending sensor)
+### What else was done this session
+- Wrote `argos/sensorium/imu.py` — `MPU6050` + `ImuReading` (14-byte I2C burst, accel/gyro/temp properties)
+- Wrote `argos/sensorium/sonar.py` — `HCSR04` (10 μs trigger, echo timing, temperature-corrected speed of sound)
+- Wrote `argos/sensorium/ir.py` — `IRSensor` + `IRPair` (digital, active-low, pull-up, BOARD 7/12)
+- Wrote `argos/sensorium/flotilla.py` — `FlotillaReader` (USB serial, background thread, Motion ×2, Weather, Colour)
+  - Fixed two bugs in Pimoroni's official heading formula (normalisation + tiltcomp_y sign error)
+- Wrote `tests/test_imu.py`, `tests/test_ir.py`, `tests/test_flotilla.py`, `tests/test_sonar.py`
+- HC-SR04 sonar confirmed working: readings from 3.4 cm to 23.2 cm verified against known distances
+
+### Remaining after this session
+- AHRS filter not yet written: `ahrs.py` (Madgwick — MPU-6050 gyro/accel + LSM303D mag → roll/pitch/yaw)
+- `fusion.py` + `target.py` not yet written (Sensorium integration layer)
 - Camera calibration (intrinsics) not yet done
 - ArUco detection module (`argos/vision/aruco.py`) not yet written
 

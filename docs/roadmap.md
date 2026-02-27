@@ -19,7 +19,11 @@ Phase 1 complete. Vision package started. All sensorium hardware confirmed conne
 | Flotilla Motion ×2 (LSM303D) — via dock USB | Confirmed connected |
 | Flotilla Weather (BMP280) — via dock USB | Confirmed connected |
 | IR proximity ×2 (BOARD 7, BOARD 12) | Confirmed connected |
-| HC-SR04 sonar — voltage divider fitted | Pending (sensor not yet acquired) |
+| HC-SR04 sonar — confirmed working | Done |
+| `argos/sensorium/imu.py` — MPU6050 driver | Done |
+| `argos/sensorium/sonar.py` — HCSR04 driver | Done |
+| `argos/sensorium/ir.py` — IRPair driver | Done |
+| `argos/sensorium/flotilla.py` — FlotillaReader (Motion ×2, Weather, Colour) | Done |
 
 ---
 
@@ -33,7 +37,7 @@ These are blocking or near-blocking items for the next build phase.
 | 2 | Camera boom bracket | Mount camera lateral to arm | See design options below | £0–5 |
 | 3 | ArUco marker sheet (printed) | Joint pose tracking | Print `DICT_4X4_50` markers on paper, laminate or use self-adhesive label stock. Sizes: 30/25/20/15 mm per link. | ~£0 |
 | ~~4~~ | ~~MPU-6050 IMU~~ | ~~Gyroscope for heading rate + arm servo loop~~ | **Done** — confirmed at I2C 0x68 on Waveshare expansion header | ~~£3~~ |
-| 5 | HC-SR04 ultrasonic sensor | Obstacle detection (safety before autonomous nav) | Voltage divider already fitted on MotorShield CN10. Plug straight in. TRIG=BOARD 29, ECHO=BOARD 31. | ~£2 |
+| ~~5~~ | ~~HC-SR04 ultrasonic sensor~~ | ~~Obstacle detection~~ | **Done** — confirmed working, readings verified | ~~£2~~ |
 
 ### Already in inventory — Pimoroni Flotilla kit
 

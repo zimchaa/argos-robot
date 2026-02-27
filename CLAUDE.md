@@ -33,11 +33,11 @@ argos/
   sensorium/
     fusion.py         # [planned] Sensorium — fused state from all sensors
     floor_plane.py    # [planned] Monocular XZ estimation via ground-plane ray-cast
-    imu.py            # [planned] MPU-6050 driver (I2C 0x68)
-    flotilla.py       # [planned] Flotilla dock wrapper — Motion ×2, Weather, Colour
+    imu.py            # MPU-6050 driver (I2C 0x68) — LIVE
+    flotilla.py       # Flotilla dock wrapper — Motion ×2, Weather, Colour — LIVE
     ahrs.py           # [planned] Madgwick filter — MPU-6050 + LSM303D → roll/pitch/yaw
-    sonar.py          # [planned] HC-SR04 driver (BOARD 29/31, divider fitted)
-    ir.py             # [planned] IR proximity drivers (BOARD 7/12)
+    sonar.py          # HC-SR04 driver (BOARD 29/31, divider fitted) — LIVE
+    ir.py             # IR proximity drivers (BOARD 7/12) — LIVE
     target.py         # [planned] TargetEstimate dataclass + confidence model
   planner/
     goal.py           # [planned] Goal dataclass (target xyz, grip, tolerance)
@@ -304,8 +304,7 @@ Session 5 complete (2026-02-27). All hardware verified. All sensorium sensors co
 - **Track drift**: right track (motor 1) runs slower than left at equal power.
   Needs IMU/encoder/visual feedback to compensate.
 
-**Pending hardware:**
-- HC-SR04 sonar — voltage divider fitted on CN10 (BOARD 29/31), sensor not yet acquired.
+- **HC-SR04 sonar** — confirmed working (readings 3–23 cm verified, `tests/test_sonar.py`)
 
 ---
 
