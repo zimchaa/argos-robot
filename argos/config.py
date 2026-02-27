@@ -1,8 +1,9 @@
 """
 Central hardware configuration for ARGOS.
 
-All motor ID mappings live here. Import from this module rather than
-hardcoding IDs in drivers, controllers, or test scripts.
+All hardware mappings live here — motors, sensors, I2C addresses, and
+Flotilla dock assignments.  Import from this module rather than
+hardcoding anything in drivers, controllers, or test scripts.
 """
 
 from dataclasses import dataclass
@@ -36,3 +37,25 @@ ARM_JOINTS = {
     "wrist":    MotorConfig(3, "raise",   "lower",   max_speed=80, min_speed=25, max_duration=3.0),
     "gripper":  MotorConfig(1, "open",    "close",   max_speed=80, min_speed=20, max_duration=2.0),
 }
+
+# ---------------------------------------------------------------------------
+# Sensorium — I2C addresses and Flotilla dock channel assignments
+# ---------------------------------------------------------------------------
+
+# MPU-6050 inertial measurement unit (gyro + accel)
+IMU_I2C_BUS     = 1       # Raspberry Pi I2C bus
+IMU_I2C_ADDR    = 0x68    # default MPU-6050 address (AD0 low)
+
+# Flotilla Motion module dock ports
+# ch 6 — body-mounted LSM303D (accel + mag); used for AHRS heading
+# ch 1 — shoulder-to-elbow arm link LSM303D; used for joint angle estimation
+FLOTILLA_BODY_MOTION_CH = 6
+FLOTILLA_ARM_MOTION_CH  = 1
+
+# HC-SR04 ultrasonic (BOARD pin numbers; voltage divider fitted on CN10)
+SONAR_TRIG_PIN  = 29
+SONAR_ECHO_PIN  = 31
+
+# IR proximity sensors (BOARD pin numbers)
+IR_PIN_1        = 7    # CN9
+IR_PIN_2        = 12   # CN8

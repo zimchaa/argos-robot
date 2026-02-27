@@ -41,12 +41,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from argos.sensorium.imu import MPU6050
 from argos.sensorium.flotilla import FlotillaReader
+from argos.config import FLOTILLA_BODY_MOTION_CH, FLOTILLA_ARM_MOTION_CH
 
 RATE_HZ = 4
 DT      = 1.0 / RATE_HZ
 
-ARM_CH  = 1   # shoulder-to-elbow link
-BODY_CH = 6   # body-mounted, used for AHRS
+ARM_CH  = FLOTILLA_ARM_MOTION_CH
+BODY_CH = FLOTILLA_BODY_MOTION_CH
 
 
 def _bar(v, scale=1.0, width=7):

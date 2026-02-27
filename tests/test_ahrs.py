@@ -34,13 +34,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from argos.sensorium.imu import MPU6050
 from argos.sensorium.ahrs import MadgwickAHRS
+from argos.config import FLOTILLA_BODY_MOTION_CH
 
-RATE_HZ           = 50
-DT                = 1.0 / RATE_HZ
-CALIB_SECS        = 3
-BETA              = 0.05
-IMU_ONLY          = "--imu-only" in sys.argv
-BODY_MOTION_CH    = 6   # Flotilla dock port for the body-mounted LSM303D
+RATE_HZ        = 50
+DT             = 1.0 / RATE_HZ
+CALIB_SECS     = 3
+BETA           = 0.05
+IMU_ONLY       = "--imu-only" in sys.argv
 
 
 def imu_read_safe(imu):
@@ -89,13 +89,13 @@ def main():
             print("  Flotilla dock opened")
             # Give the reader thread a moment to receive initial updates
             time.sleep(1.0)
-            m = flotilla.motion_channel(BODY_MOTION_CH)
+            m = flotilla.motion_channel(FLOTILLA_BODY_MOTION_CH)
             chs = flotilla.connected_modules
             if m is None:
-                print(f"  WARNING: no Motion on ch {BODY_MOTION_CH} "
+                print(f"  WARNING: no Motion on ch {FLOTILLA_BODY_MOTION_CH} "
                       f"(connected: {chs}) — running 6DOF")
             else:
-                print(f"  Body Motion on ch {BODY_MOTION_CH} detected — 9DOF mode")
+                print(f"  Body Motion on ch {FLOTILLA_BODY_MOTION_CH} detected — 9DOF mode")
                 print(f"  All channels: {chs}")
         except Exception as exc:
             print(f"  Flotilla not available ({exc}) — running 6DOF")
@@ -173,7 +173,7 @@ def main():
             mag = None
             mode = "6DOF"
             if flotilla is not None:
-                m = flotilla.motion_channel(BODY_MOTION_CH)
+                m = flotilla.motion_channel(FLOTILLA_BODY_MOTION_CH)
                 if m is not None:
                     mag = (m.mag_x, m.mag_y, m.mag_z)
                     mode = "9DOF"
