@@ -3,3 +3,7 @@
 #   or: sudo pip3 install smbus2 RPi.GPIO --break-system-packages
 
 pyserial
+
+# Vision — headless build (no GTK/Qt display dependency)
+# Alternative: sudo apt install python3-opencv
+opencv-python-headless
