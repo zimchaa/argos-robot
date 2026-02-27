@@ -67,47 +67,54 @@ IR_PIN_2        = 12   # CN8
 #   az = +1g when robot is flat;  ax > 0 = nose pitches up;  ay > 0 = right rolls down
 #   i.e.  filter X = forward,  filter Y = right,  filter Z = up
 #
-# Probed 2026-02-27 with probe_sensor_axes.py, robot stationary on flat surface:
-#   MPU-6050     accel: ax = -0.967g → chip +X points DOWN  (= robot −Z)
-#   Body LSM303D accel: ax = -0.999g → chip +X points DOWN  (same mounting as MPU)
-#   Arm  LSM303D accel: ax = +0.966g → chip +X points UP    (inverted mounting vs body)
-#
-# Required remap so Madgwick converges:
-#   filter_az = −chip_ax   (for MPU and body LSM)
-#   filter_az = +chip_ax   (for arm LSM)
-#   Gyro Z must be remapped consistently: filter_gz = −chip_gx (for MPU)
-#
-# Full remap format: ((fx_sign, fx_src), (fy_sign, fy_src), (fz_sign, fz_src))
-#   where src is 0=chip_x, 1=chip_y, 2=chip_z and sign is +1 or −1.
+# Remap format: ((sign, src), (sign, src), (sign, src))  for (filter_x, filter_y, filter_z)
+#   src  0 = chip_x,  1 = chip_y,  2 = chip_z
 #   Apply as: filter[i] = sign * chip[src]
+#   Applies identically to accel, gyro, and (for body LSM) mag — same chip axes.
 #
-# Gravity axis (Z) is confirmed below.
-# Forward (+X) and lateral (+Y) chip-axis assignments are TBD — re-run
-# probe_sensor_axes.py while tilting the robot forward/backward and
-# left/right, then update the None placeholders with the correct (sign, src).
+# Probe results 2026-02-27 with probe_sensor_axes.py:
+#
+#   Test 1 — robot flat on surface (gravity = DOWN = robot −Z):
+#     MPU-6050     accel: ax = −0.967g  →  chip +X = DOWN        ★ measured
+#     Body LSM303D accel: ax = −0.999g  →  chip +X = DOWN        ★ measured
+#     Arm  LSM303D accel: ax = +0.966g  →  chip +X = UP          ★ measured
+#
+#   Test 2 — robot tilted nose-down ~90° (gravity = FORWARD = robot +X):
+#     MPU-6050     accel: az = −1.100g  →  chip +Z = FORWARD     ★ measured
+#     Body LSM303D accel: ay = −1.009g  →  chip +Y = FORWARD     ★ measured
+#     Arm  LSM303D accel: ay = +0.976g  →  chip −Y = FORWARD     ★ measured
+#
+#   Third axis for each chip inferred by right-hand rule (★ = measured, ○ = inferred):
+#     MPU-6050:     chip +X=DOWN, chip +Z=FWD  →  chip +Y = RIGHT     ○
+#     Body LSM303D: chip +X=DOWN, chip +Y=FWD  →  chip +Z = LEFT      ○
+#     Arm  LSM303D: chip +X=UP,   chip −Y=FWD  →  chip +Z = LEFT      ○
+#
+#   Lateral (Y) signs are inferred — verify with a left-tilt probe if needed.
 
+# MPU-6050: chip X=down, Y=right, Z=forward  →  filter X=+chipZ, Y=+chipY, Z=−chipX
+# Same remap applies to MPU gyro channels.
 IMU_AXIS_REMAP = (
-    (None,  None),   # filter X = forward — TBD (tilt test)
-    (None,  None),   # filter Y = right   — TBD (tilt test)
-    (  -1,     0),   # filter Z = −chip_x  (gravity confirmed 2026-02-27)
+    (+1,  2),   # filter X (forward) = +chip_z   ★ nose-down test
+    (+1,  1),   # filter Y (right)   = +chip_y   ○ right-hand rule
+    (-1,  0),   # filter Z (up)      = −chip_x   ★ flat test
 )
 
+# Body LSM303D (ch6): chip X=down, Y=forward, Z=left
+# →  filter X=+chipY, Y=−chipZ, Z=−chipX
+# Same remap applies to LSM303D magnetometer (shared chip axes).
 BODY_MOTION_AXIS_REMAP = (
-    (None,  None),   # filter X — TBD
-    (None,  None),   # filter Y — TBD
-    (  -1,     0),   # filter Z = −chip_x  (same mounting as MPU)
+    (+1,  1),   # filter X (forward) = +chip_y   ★ nose-down test
+    (-1,  2),   # filter Y (right)   = −chip_z   ○ right-hand rule
+    (-1,  0),   # filter Z (up)      = −chip_x   ★ flat test
 )
 
-# Magnetometer from body LSM303D feeds directly to the AHRS heading.
-# mx/my/mz axis alignment with the filter frame TBD (needs compass-spin test).
-BODY_MOTION_MAG_REMAP = (
-    (None,  None),
-    (None,  None),
-    (None,  None),
-)
+# Magnetometer uses the same LSM303D chip axes as the accelerometer above.
+# Compass-spin test still needed to confirm sign conventions in heading output.
+BODY_MOTION_MAG_REMAP = BODY_MOTION_AXIS_REMAP
 
+# Arm LSM303D (ch1): chip X=up, −Y=forward, Z=left  →  filter X=−chipY, Y=−chipZ, Z=+chipX
 ARM_MOTION_AXIS_REMAP = (
-    (None,  None),   # filter X — TBD
-    (None,  None),   # filter Y — TBD
-    (  +1,     0),   # filter Z = +chip_x  (inverted mounting vs body, confirmed 2026-02-27)
+    (-1,  1),   # filter X (forward) = −chip_y   ★ nose-down test
+    (-1,  2),   # filter Y (right)   = −chip_z   ○ right-hand rule
+    (+1,  0),   # filter Z (up)      = +chip_x   ★ flat test
 )
