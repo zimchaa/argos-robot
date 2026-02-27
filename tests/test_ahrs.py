@@ -34,18 +34,32 @@ BETA         = 0.05
 IMU_ONLY     = "--imu-only" in sys.argv
 
 
+def imu_read_safe(imu):
+    """Read IMU with retry on transient I2C errors."""
+    for attempt in range(3):
+        try:
+            return imu.read()
+        except OSError:
+            time.sleep(0.005)
+    return None   # all retries failed
+
+
 def calibrate_gyro(imu, seconds):
     """Average gyro readings at rest to estimate bias (deg/s)."""
     n = 0
     sx = sy = sz = 0.0
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        r = imu.read()
+        r = imu_read_safe(imu)
+        if r is None:
+            continue
         sx += r.gyro_x_dps
         sy += r.gyro_y_dps
         sz += r.gyro_z_dps
         n += 1
         time.sleep(0.01)
+    if n == 0:
+        raise RuntimeError("IMU returned no valid readings during calibration")
     return sx / n, sy / n, sz / n
 
 
@@ -99,7 +113,9 @@ def main():
             dt = t_now - t_prev
             t_prev = t_now
 
-            r = imu.read()
+            r = imu_read_safe(imu)
+            if r is None:
+                continue
 
             # Gyro in rad/s, bias-corrected
             gyro = (
