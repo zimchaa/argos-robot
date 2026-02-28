@@ -84,27 +84,27 @@ IR_PIN_2        = 12   # CN8
 #     Body LSM303D accel: ay = −1.009g  →  chip +Y = FORWARD     ★ measured
 #     Arm  LSM303D accel: ay = +0.976g  →  chip −Y = FORWARD     ★ measured
 #
-#   Third axis for each chip inferred by right-hand rule (★ = measured, ○ = inferred):
-#     MPU-6050:     chip +X=DOWN, chip +Z=FWD  →  chip +Y = RIGHT     ○
-#     Body LSM303D: chip +X=DOWN, chip +Y=FWD  →  chip +Z = LEFT      ○
-#     Arm  LSM303D: chip +X=UP,   chip −Y=FWD  →  chip +Z = LEFT      ○
+#   Test 3 — robot tilted 90° right side down (gravity = RIGHT = robot +Y):
+#     MPU-6050     accel: ay = +1.000g  →  chip +Y = RIGHT     ★ measured (confirms RHR)
+#     Body LSM303D accel: az = −0.895g  →  chip +Z = RIGHT     ★ measured (contradicts RHR)
+#     Arm  LSM303D accel: az = −0.914g  →  chip +Z = RIGHT     ★ measured (contradicts RHR)
 #
-#   Lateral (Y) signs are inferred — verify with a left-tilt probe if needed.
+#   Note: both Flotilla LSM303D chips appear to use a LEFT-HANDED axis convention
+#   (Z = −(X × Y)).  All three axes are now fully measured — no inferred values.
 
 # MPU-6050: chip X=down, Y=right, Z=forward  →  filter X=+chipZ, Y=+chipY, Z=−chipX
 # Same remap applies to MPU gyro channels.
 IMU_AXIS_REMAP = (
     (+1,  2),   # filter X (forward) = +chip_z   ★ nose-down test
-    (+1,  1),   # filter Y (right)   = +chip_y   ○ right-hand rule
+    (+1,  1),   # filter Y (right)   = +chip_y   ★ right-tilt test
     (-1,  0),   # filter Z (up)      = −chip_x   ★ flat test
 )
 
-# Body LSM303D (ch6): chip X=down, Y=forward, Z=left
-# →  filter X=+chipY, Y=−chipZ, Z=−chipX
+# Body LSM303D (ch6): chip X=down, Y=forward, Z=right  →  filter X=+chipY, Y=+chipZ, Z=−chipX
 # Same remap applies to LSM303D magnetometer (shared chip axes).
 BODY_MOTION_AXIS_REMAP = (
     (+1,  1),   # filter X (forward) = +chip_y   ★ nose-down test
-    (-1,  2),   # filter Y (right)   = −chip_z   ○ right-hand rule
+    (+1,  2),   # filter Y (right)   = +chip_z   ★ right-tilt test
     (-1,  0),   # filter Z (up)      = −chip_x   ★ flat test
 )
 
@@ -112,9 +112,9 @@ BODY_MOTION_AXIS_REMAP = (
 # Compass-spin test still needed to confirm sign conventions in heading output.
 BODY_MOTION_MAG_REMAP = BODY_MOTION_AXIS_REMAP
 
-# Arm LSM303D (ch1): chip X=up, −Y=forward, Z=left  →  filter X=−chipY, Y=−chipZ, Z=+chipX
+# Arm LSM303D (ch1): chip X=up, −Y=forward, Z=right  →  filter X=−chipY, Y=+chipZ, Z=+chipX
 ARM_MOTION_AXIS_REMAP = (
     (-1,  1),   # filter X (forward) = −chip_y   ★ nose-down test
-    (-1,  2),   # filter Y (right)   = −chip_z   ○ right-hand rule
+    (+1,  2),   # filter Y (right)   = +chip_z   ★ right-tilt test
     (+1,  0),   # filter Z (up)      = +chip_x   ★ flat test
 )
