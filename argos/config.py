@@ -109,8 +109,30 @@ BODY_MOTION_AXIS_REMAP = (
 )
 
 # Magnetometer uses the same LSM303D chip axes as the accelerometer above.
-# Compass-spin test still needed to confirm sign conventions in heading output.
+#
+# Compass spin test 2026-02-28 (robot flat, turned CW in 90° steps):
+#   Raw chip readings:
+#     0°  : mx=+4202  my=+4672  mz= +8880
+#     90° : mx=+3640  my=+2223  mz= +8308
+#     180°: mx=+3739  my=+1581  mz=+10995
+#
+#   heading = atan2(−mz_cal, my_cal) increases clockwise ✓  (remap confirmed)
+#   mx (filter Z = −mx) varies only ~500 counts across yaw — vertical field stable ✓
+#
+#   Hard-iron bias is large (mz offset ≈ 5× signal amplitude — motor magnets nearby).
+#   Rough offsets from this half-rotation:  my_bias ≈ +3127,  mz_bias ≈ +9938.
+#   Run a full 360° slow spin to finalise — update MAG_HARD_IRON_BIAS below.
 BODY_MOTION_MAG_REMAP = BODY_MOTION_AXIS_REMAP
+
+# Hard-iron bias for body LSM303D magnetometer.
+# Subtract from raw chip (mx, my, mz) before applying BODY_MOTION_MAG_REMAP.
+# Derived from: bias = (axis_max + axis_min) / 2  over a full level 360° spin.
+# Rough values from 2026-02-28 half-rotation — replace after full spin calibration.
+MAG_HARD_IRON_BIAS = (
+    0,      # mx bias  (filter Z = up;  vertical component — small effect on heading)
+    3127,   # my bias  (filter X = forward)   rough, half-rotation only
+    9938,   # mz bias  (filter Y = right)      rough, half-rotation only
+)
 
 # Arm LSM303D (ch1): chip X=up, −Y=forward, Z=right  →  filter X=−chipY, Y=+chipZ, Z=+chipX
 ARM_MOTION_AXIS_REMAP = (
