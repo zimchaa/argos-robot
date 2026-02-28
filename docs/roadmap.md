@@ -1,8 +1,8 @@
 # ARGOS — Roadmap and Forward Plan
 
-## Current state (Session 5 complete, 2026-02-27)
+## Current state (Session 6 complete, 2026-02-28)
 
-Phase 1 complete. Vision package started. All sensorium hardware confirmed connected.
+Phase 1 complete. All sensorium drivers live. Sensor axis calibration complete. AHRS filter written.
 
 | Item | Status |
 |------|--------|
@@ -15,15 +15,26 @@ Phase 1 complete. Vision package started. All sensorium hardware confirmed conne
 | Track drift (right slower than left) | Known, deferred |
 | USB webcam — confirmed 640×480 @ 30fps | Done |
 | `argos/vision/camera.py` — Camera class | Done |
-| MPU-6050 IMU — connected, I2C 0x68 | Confirmed connected |
-| Flotilla Motion ×2 (LSM303D) — via dock USB | Confirmed connected |
-| Flotilla Weather (BMP280) — via dock USB | Confirmed connected |
-| IR proximity ×2 (BOARD 7, BOARD 12) | Confirmed connected |
-| HC-SR04 sonar — confirmed working | Done |
+| MPU-6050 IMU — I2C 0x68, readings verified | Done |
+| Flotilla Motion ×2 (LSM303D) — Motion ×2 + Weather verified | Done |
+| HC-SR04 sonar — confirmed 3–23 cm range | Done |
+| IR proximity ×2 (BOARD 7, BOARD 12) — confirmed connected | Done |
 | `argos/sensorium/imu.py` — MPU6050 driver | Done |
 | `argos/sensorium/sonar.py` — HCSR04 driver | Done |
 | `argos/sensorium/ir.py` — IRPair driver | Done |
 | `argos/sensorium/flotilla.py` — FlotillaReader (Motion ×2, Weather, Colour) | Done |
+| `argos/sensorium/ahrs.py` — MadgwickAHRS (9DOF MARG + 6DOF modes) | Done |
+| Sensor axis remaps — all 3 chips, all 3 axes fully ★ measured | Done (2026-02-27) |
+| Both Flotilla LSMs confirmed left-handed axis convention | Done (2026-02-27) |
+| Compass spin test — BODY_MOTION_MAG_REMAP confirmed correct | Done (2026-02-28) |
+| `MAG_HARD_IRON_BIAS` in config — rough values from half-rotation | Done — full 360° calibration pending |
+| `tests/probe_sensor_axes.py` — axis probe helper | Done |
+| `argos/vision/aruco.py` — ArUco detection | **Next — Phase 2a** |
+| `argos/vision/calibration/` — camera intrinsics | **Next — Phase 2a** |
+| `argos/arm/kinematics.py` — FK + IK solver | Phase 2b |
+| `argos/planner/` — goal decomposition + executor | Phase 2c |
+| `argos/sensorium/fusion.py` + `target.py` + `floor_plane.py` | Phase 2e |
+| `argos/mcp/` — MCP server | Phase 3 |
 
 ---
 

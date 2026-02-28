@@ -121,3 +121,62 @@ Frame shape: (480, 640, 3)  dtype=uint8
 - Shoulder joint not moving — investigate connector and motor 4 terminal wiring
 - Track drift to be quantified and compensated once odometry/feedback is available
 - Joint directions (positive = which physical way) not yet fully characterised for all joints
+
+---
+
+## Session 4 — AHRS + sensor axis calibration (2026-02-27, continued)
+
+### What was done
+- Wrote `argos/sensorium/ahrs.py` — `MadgwickAHRS` (9DOF MARG + 6DOF IMU-only modes)
+  - Gradient-descent quaternion update; Euler output (roll/pitch/yaw in degrees)
+  - `init_from_accel()` for fast initial convergence; `calibrate_level()` for mounting offset
+  - Uses body Motion sensor (ch 6) as the magnetometer source
+- Added sensorium constants to `config.py`: `IMU_I2C_BUS/ADDR`, `FLOTILLA_BODY_MOTION_CH`,
+  `FLOTILLA_ARM_MOTION_CH`, `SONAR_TRIG/ECHO_PIN`, `IR_PIN_1/2`
+- Wrote `tests/probe_sensor_axes.py` — live display of all three IMU chips simultaneously
+  to enable physical tilt tests for axis-to-filter-frame mapping
+- Ran three-position probe:
+  - **Flat** (gravity = −Z): MPU chip+X=down; Body LSM chip+X=down; Arm LSM chip+X=up
+  - **Nose-down** (gravity = +X): MPU chip+Z=fwd; Body LSM chip+Y=fwd; Arm LSM chip−Y=fwd
+  - **Right-tilt 90°** (gravity = +Y): MPU chip+Y=right ✓ (RHR confirmed);
+    Body LSM chip+Z=right; Arm LSM chip+Z=right (both LSMs left-handed convention — RHR wrong)
+- Wrote full `IMU_AXIS_REMAP`, `BODY_MOTION_AXIS_REMAP`, `ARM_MOTION_AXIS_REMAP` into
+  `config.py` — all axes ★ measured, no inferred values
+
+### Key findings
+- Both Flotilla LSM303D chips use a **left-handed** axis convention: Z = −(X × Y).
+  The right-hand rule predicts `chip+Z = LEFT` from the other two axes, but hardware
+  shows `chip+Z = RIGHT`. The corrected filter-frame mapping is `filter_Y = +chip_z`
+  (was `−chip_z` before the right-tilt test).
+- MPU-6050 is standard right-handed — right-hand rule holds for all three axes.
+
+---
+
+## Session 6 — Magnetometer compass spin test + calibration (2026-02-28)
+
+### What was done
+- Ran compass spin test: robot flat on table, rotated CW in 90° steps (0°, 90°, 180°)
+- Analysed spin test readings against BODY_MOTION_MAG_REMAP:
+  - `heading = atan2(−mz_cal, my_cal)` increases clockwise ✓
+  - `mx` (vertical field component via `−chip_x`) varies < 15% across yaw — stable ✓
+  - **BODY_MOTION_MAG_REMAP confirmed correct** — no config change needed
+- Quantified hard-iron bias:
+  - `mz` offset ≈ +9938 (≈ 5× signal amplitude — motor permanent magnets nearby)
+  - `my` offset ≈ +3127; `mx` offset negligible (vertical component)
+  - From half-rotation: `my_bias = (my_0 + my_180) / 2 = 3127`, `mz_bias = (mz_0 + mz_180) / 2 = 9938`
+- Added `MAG_HARD_IRON_BIAS = (0, 3127, 9938)` to `config.py`, flagged as rough / half-rotation only
+- Full 360° spin still needed to finalise bias values
+
+### What worked
+- Remap confirmed with quantitative circle fit (radius ≈ 1866 counts, consistent across all 3 points)
+- 0° and 180° readings give `(my − bias)` and `(mz − bias)` equal and opposite to within ±2% ✓
+
+### Remaining after this session
+- Full 360° horizontal spin to refine `MAG_HARD_IRON_BIAS` (min/max method)
+- `argos/sensorium/fusion.py` — Sensorium integration class (Phase 2e)
+- `argos/sensorium/target.py` + `argos/sensorium/floor_plane.py` (Phase 2e)
+- `argos/vision/aruco.py` — ArUco detection (Phase 2a)
+- `argos/vision/calibration/` — camera intrinsics (Phase 2a)
+- `argos/arm/kinematics.py` — FK + IK solver (Phase 2b)
+- `argos/planner/` — goal decomposition + executor (Phase 2c)
+- `argos/mcp/` — MCP server (Phase 3)
