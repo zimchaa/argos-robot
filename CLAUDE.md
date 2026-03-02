@@ -27,15 +27,17 @@ argos/
   safety/
     monitor.py        # SafetyMonitor — speed clamping + watchdog (LIVE)
   vision/
-    camera.py         # [planned] USB webcam capture (OpenCV VideoCapture)
+    camera.py         # USB webcam capture (OpenCV VideoCapture) — LIVE
     aruco.py          # [planned] ArUco detection, joint angle extraction
     calibration/      # [planned] Camera intrinsics + distortion data
   sensorium/
     fusion.py         # [planned] Sensorium — fused state from all sensors
     floor_plane.py    # [planned] Monocular XZ estimation via ground-plane ray-cast
-    imu.py            # [planned] MPU-6050 driver (I2C 0x68)
-    sonar.py          # [planned] HC-SR04 driver (BOARD 29/31, divider fitted)
-    ir.py             # [planned] IR proximity drivers (BOARD 7/12)
+    imu.py            # MPU-6050 driver (I2C 0x68) — LIVE
+    flotilla.py       # Flotilla dock wrapper — Motion ×2, Weather, Colour — LIVE
+    ahrs.py           # MadgwickAHRS — 9DOF MARG + 6DOF modes — LIVE
+    sonar.py          # HC-SR04 driver (BOARD 29/31, divider fitted) — LIVE
+    ir.py             # IR proximity drivers (BOARD 7/12) — LIVE
     target.py         # [planned] TargetEstimate dataclass + confidence model
   planner/
     goal.py           # [planned] Goal dataclass (target xyz, grip, tolerance)
@@ -48,7 +50,14 @@ tests/
   test_all_motors_manual.py   # Interactive hardware test — all motors
   motor_jog.py                # Single-motor jog via SafetyMonitor
   jig.py                      # Random multi-motor sequence
-requirements.txt    # smbus2, RPi.GPIO (+ opencv-python, mcp planned)
+  test_camera.py              # USB webcam capture + save frame
+  test_imu.py                 # MPU-6050 live accel/gyro/temp readout
+  test_sonar.py               # HC-SR04 live distance readout
+  test_ir.py                  # IR proximity sensor live readout
+  test_flotilla.py            # Flotilla dock module readout (--raw mode)
+  test_ahrs.py                # 9DOF AHRS live roll/pitch/yaw (MPU + Flotilla)
+  probe_sensor_axes.py        # Axis alignment probe for all 3 IMU chips
+requirements.txt    # pyserial, opencv-python-headless (smbus2/RPi.GPIO via apt)
 DEVLOG.md           # Session-by-session development log
 docs/
   roadmap.md                            # Forward plan and procurement list
@@ -221,22 +230,25 @@ to the planner. Implements a coarse-to-fine target acquisition model — the pla
 does not need precise coordinates upfront, just enough to start moving.
 
 ```
-Distance    Active sensors              Confidence
-────────    ──────────────────────────  ──────────
-> 1 m       Camera bearing only         LOW — approach
+Distance    Active sensors                    Confidence
+────────    ──────────────────────────────    ──────────
+> 1 m       Camera bearing + AHRS heading     LOW — approach
             + floor-plane if on ground
-20–100 cm   Camera + sonar              MEDIUM — refine
-5–30 cm     Camera + sonar + IR         HIGH — plan
-            + ArUco on target (if any)  HIGHEST
+20–100 cm   Camera + sonar + AHRS             MEDIUM — refine
+5–30 cm     Camera + sonar + IR + Colour      HIGH — plan
+            + ArUco on target (if any)        HIGHEST
 ```
 
-Key technique: **floor-plane homography** — with calibrated camera height/tilt and
-IMU roll/pitch, any floor-point pixel ray-casts to an XZ ground position without
-stereo. Sonar range + camera bearing gives polar → cartesian for non-floor targets.
-Neural depth (MiDaS etc.) explicitly excluded — too slow on Pi 4 CPU.
+Key sensors:
+- **AHRS** (Madgwick filter): MPU-6050 gyro + accel + Flotilla LSM303D magnetometer → stable roll/pitch/yaw with absolute compass heading. Corrects gyro drift on turns. Active at all ranges.
+- **Floor-plane homography**: AHRS roll/pitch corrects camera tilt for ground-plane ray-cast. Gives XZ position for floor targets without stereo.
+- **Sonar + camera bearing**: polar → cartesian for non-floor targets.
+- **Colour module** (Flotilla): RGB + ambient light at close range. Object colour ID for task context. Ambient light predicts ArUco detection reliability.
+- **Arm Motion module** (Flotilla, second LSM303D on shoulder link): accelerometer tilt → shoulder joint angle when ArUco is occluded.
+- Neural depth (MiDaS etc.) explicitly excluded — too slow on Pi 4 CPU.
 
 See `docs/roadmap.md` — Phase 2e for full design, module structure, Pi 4 thread
-budget, and calibration requirements.
+budget, calibration requirements, and Flotilla integration details.
 
 ---
 
@@ -282,13 +294,23 @@ Entry point: `python -m argos.mcp`.
 
 ## Development status
 
-Session 4 complete. All hardware verified.
+Session 6 complete (2026-02-28). All hardware verified. All sensorium drivers live. Sensor axis calibration complete.
 
 **Confirmed working:**
 - Waveshare HAT at I2C 0x40 (`i2cdetect -y 1` verified)
 - Both tracks forward on positive speed; `TrackedBase.forward()` drives together
 - All four arm joints confirmed working (2026-02-26): shoulder, elbow, wrist, gripper
 - `SafetyMonitor` speed clamping and watchdog verified via `motor_jog.py`
+- **USB webcam** at /dev/video0 — 640×480 @ 30fps confirmed (`tests/test_camera.py`)
+- **MPU-6050 IMU** — I2C 0x68, accel/gyro/temp readings verified (`tests/test_imu.py`)
+- **HC-SR04 sonar** — 3–23 cm range verified against known distances (`tests/test_sonar.py`)
+- **IR proximity ×2** — BOARD 7 (CN9) and BOARD 12 (CN8) confirmed (`tests/test_ir.py`)
+- **Flotilla Motion ×2** (LSM303D) — readings verified; axis remaps ★ measured on hardware
+- **Flotilla Weather** (BMP280) — temperature + pressure readings verified
+- **`MadgwickAHRS`** (`ahrs.py`) — 9DOF fusion verified via `tests/test_ahrs.py`
+- **Sensor axis remaps** — all 3 chips fully measured; both LSM303Ds confirmed left-handed convention
+- **Compass spin test** — `BODY_MOTION_MAG_REMAP` confirmed correct; `MAG_HARD_IRON_BIAS` rough
+  values in `config.py` (full 360° calibration still pending)
 
 **Known issues:**
 - **Track drift**: right track (motor 1) runs slower than left at equal power.
@@ -298,12 +320,22 @@ Session 4 complete. All hardware verified.
 
 ## Dependencies
 
+System packages (install via apt, not pip):
 ```
-smbus2      # I2C for PCA9685
-RPi.GPIO    # GPIO + software PWM for MotorShield
+sudo apt install python3-rpi.gpio python3-smbus2
 ```
 
-Planned additions: `opencv-python`, `mcp` (Anthropic).
+pip (see `requirements.txt`):
+```
+pyserial               # Flotilla dock USB serial (custom driver — no Pimoroni lib)
+opencv-python-headless # Vision / ArUco detection
+```
+
+Planned additions: `mcp` (Anthropic) — for MCP server (Phase 3).
+
+Note: The Flotilla dock is driven by a custom serial reader (`argos/sensorium/flotilla.py`)
+communicating directly over USB serial. The Pimoroni `flotilla` pip package and
+`flotillactl` daemon are **not used**.
 
 Enable I2C: `raspi-config` → Interface Options → I2C.
 Disable SPI (default) to free MotorShield pins for motors 3 and 4.
