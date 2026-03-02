@@ -133,10 +133,26 @@ At 35 cm standoff: frame height ≈ 27 cm — sufficient if total arm reach < ~2
 
 ---
 
+## Camera test frame
+
+First capture from the mounted webcam — arm visible from shoulder to gripper in side-on profile.
+
+![Camera test frame](camera_test.jpg)
+
+Observations from this frame:
+- Full arm chain (shoulder → elbow → wrist → gripper) is in frame
+- Camera is positioned slightly below arm midpoint — slight upward angle
+- Monitor on right obstructs ~30% of frame; camera position needs to shift left or forward
+- Low ambient light — ArUco detection will need adequate lighting or exposure tuning
+
+---
+
 ## Open questions
 
 - [ ] Measure all arm link lengths (table above)
 - [ ] Confirm which chassis side gives cleaner view (wiring may obstruct one side)
+- [ ] Resolve monitor obstruction — reposition camera or clear the workspace
+- [ ] Improve lighting — test ArUco detection reliability under current conditions
 - [ ] Prototype bracket material: 3D-printed, aluminium angle, or repurposed hardware
 - [ ] Confirm USB cable routing and length needed to reach Pi USB port
 - [ ] Check flat panel dimensions on each arm link for marker sizing
