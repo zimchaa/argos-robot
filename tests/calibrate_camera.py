@@ -50,6 +50,7 @@ RMS reprojection error < 0.5 px  — excellent
 """
 
 import sys
+import argparse
 import pathlib
 import time
 import json
@@ -64,9 +65,14 @@ from argos.vision.camera import Camera
 # ---------------------------------------------------------------------------
 # Checkerboard parameters — must match the printed board
 # ---------------------------------------------------------------------------
-BOARD_W        = 9       # inner corners wide
-BOARD_H        = 6       # inner corners tall
-SQUARE_SIZE_MM = 25.0    # physical square size in mm
+BOARD_W = 9    # inner corners wide
+BOARD_H = 6    # inner corners tall
+
+# Default square size.  Override with --square-size if your print differs.
+# Measure: lay a ruler across 5 squares and divide by 5.
+# Note: this only affects the units in calibration_summary.json — it does
+# NOT change camera_matrix or dist_coeffs (both are in pixels).
+_DEFAULT_SQUARE_SIZE_MM = 25.0
 
 # ---------------------------------------------------------------------------
 # Capture parameters
@@ -92,11 +98,11 @@ SUBPIX_CRITERIA = (
 )
 
 
-def _object_points():
+def _object_points(square_size_mm):
     """3D object points for one board pose in the Z=0 plane."""
     obj = np.zeros((BOARD_H * BOARD_W, 3), np.float32)
     obj[:, :2] = np.mgrid[0:BOARD_W, 0:BOARD_H].T.reshape(-1, 2)
-    obj *= SQUARE_SIZE_MM
+    obj *= square_size_mm
     return obj
 
 
@@ -117,19 +123,33 @@ def _is_new_enough(corners, accepted, img_diagonal):
 
 
 def main():
-    device = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    parser = argparse.ArgumentParser(description="ARGOS camera calibration")
+    parser.add_argument(
+        "device", nargs="?", type=int, default=0,
+        help="V4L2 device index (default 0)",
+    )
+    parser.add_argument(
+        "--square-size", type=float, default=_DEFAULT_SQUARE_SIZE_MM,
+        metavar="MM",
+        help=f"Physical square size in mm (default {_DEFAULT_SQUARE_SIZE_MM}). "
+             "Measure across 5 squares with a ruler and divide by 5.",
+    )
+    args = parser.parse_args()
+
+    device          = args.device
+    square_size_mm  = args.square_size
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-    obj_pt = _object_points()
+    obj_pt = _object_points(square_size_mm)
 
     obj_points       = []   # accumulated 3D points, one entry per accepted frame
     img_points       = []   # accumulated 2D corner points
     accepted_corners = []   # for diversity check
 
     print("ARGOS — camera calibration")
-    print(f"  Board    : {BOARD_W}×{BOARD_H} inner corners, {SQUARE_SIZE_MM:.0f} mm squares")
+    print(f"  Board    : {BOARD_W}×{BOARD_H} inner corners, {square_size_mm:.1f} mm squares")
     print(f"  Target   : {TARGET_FRAMES} good frames")
     print(f"  Interval : {CAPTURE_INTERVAL:.0f} s between attempts")
     print(f"  Output   : {OUT_DIR}")
@@ -231,7 +251,7 @@ def main():
         "rms_px":              float(rms),
         "image_size":          [w, h],
         "board_inner_corners": [BOARD_W, BOARD_H],
-        "square_size_mm":      SQUARE_SIZE_MM,
+        "square_size_mm":      square_size_mm,
         "frames_used":         len(obj_points),
         "fx":      float(camera_matrix[0, 0]),
         "fy":      float(camera_matrix[1, 1]),
