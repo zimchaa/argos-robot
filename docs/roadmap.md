@@ -83,10 +83,11 @@ Mount on the shoulder–elbow link. Accelerometer tilt gives absolute link angle
 | Touch | — | Capacitive buttons | Physical emergency stop / mode select button on the chassis. |
 
 **Flotilla software dependency:**
-```
-pip install flotilla
-```
-The `flotillactl` daemon must be running before the Python library can connect. The `Sensorium` startup sequence must launch the daemon if it is not already running, or check its status before connecting modules.
+No external Flotilla library is used. `argos/sensorium/flotilla.py` is a custom
+direct USB serial driver (uses `pyserial`). The Flotilla dock enumerates as a
+USB serial device (`/dev/ttyACM*` or `/dev/ttyUSB*`). No daemon is required.
+The `Sensorium` startup sequence opens the serial port and begins the background
+reader thread directly.
 
 ---
 

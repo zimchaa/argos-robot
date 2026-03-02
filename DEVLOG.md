@@ -55,47 +55,6 @@
 
 ---
 
-## Session 5 — Vision + sensorium hardware bring-up (2026-02-27)
-
-### What was done
-- Plugged in USB webcam; wrote `argos/vision/camera.py` — `Camera` class wrapping `cv2.VideoCapture`
-- Wrote `tests/test_camera.py` — headless test: 5-frame warm-up, saves `tests/camera_test.jpg`
-- Confirmed all sensorium sensors connected and active on hardware:
-  - **MPU-6050** IMU — I2C 0x68 on Waveshare expansion header (gyro + accel)
-  - **Flotilla Motion ×2** — LSM303D (accel + magnetometer), via Flotilla dock USB
-  - **Flotilla Weather** — BMP280 (temperature + pressure), via Flotilla dock USB
-  - **IR proximity ×2** — BOARD 7 (CN9) and BOARD 12 (CN8)
-  - **Camera** — USB webcam at /dev/video0
-
-### Camera test result
-```
-Resolution : 640 × 480
-FPS        : 30.0
-Frame shape: (480, 640, 3)  dtype=uint8
-```
-
-### What worked
-- Camera opens immediately, warm-up and frame save work correctly
-- All sensorium sensor hardware confirmed present and responsive
-- `argos/vision/` package structure established
-
-### What else was done this session
-- Wrote `argos/sensorium/imu.py` — `MPU6050` + `ImuReading` (14-byte I2C burst, accel/gyro/temp properties)
-- Wrote `argos/sensorium/sonar.py` — `HCSR04` (10 μs trigger, echo timing, temperature-corrected speed of sound)
-- Wrote `argos/sensorium/ir.py` — `IRSensor` + `IRPair` (digital, active-low, pull-up, BOARD 7/12)
-- Wrote `argos/sensorium/flotilla.py` — `FlotillaReader` (USB serial, background thread, Motion ×2, Weather, Colour)
-  - Fixed two bugs in Pimoroni's official heading formula (normalisation + tiltcomp_y sign error)
-- Wrote `tests/test_imu.py`, `tests/test_ir.py`, `tests/test_flotilla.py`, `tests/test_sonar.py`
-- HC-SR04 sonar confirmed working: readings from 3.4 cm to 23.2 cm verified against known distances
-
-### Remaining after this session
-- AHRS filter not yet written: `ahrs.py` (Madgwick — MPU-6050 gyro/accel + LSM303D mag → roll/pitch/yaw)
-- `fusion.py` + `target.py` not yet written (Sensorium integration layer)
-- Camera calibration (intrinsics) not yet done
-- ArUco detection module (`argos/vision/aruco.py`) not yet written
-
----
-
 ## Session 3 — Full motor test: all 6 motors verified
 
 ### What was done
@@ -119,14 +78,47 @@ Frame shape: (480, 640, 3)  dtype=uint8
 
 ### Unresolved
 - Shoulder joint not moving — investigate connector and motor 4 terminal wiring
+  _(resolved Session 5, 2026-02-26: confirmed working via `motor_jog.py gpio 4 60 1.5`)_
 - Track drift to be quantified and compensated once odometry/feedback is available
 - Joint directions (positive = which physical way) not yet fully characterised for all joints
 
 ---
 
-## Session 4 — AHRS + sensor axis calibration (2026-02-27, continued)
+## Session 5 — Vision + sensorium hardware bring-up + AHRS (2026-02-27)
 
 ### What was done
+- Plugged in USB webcam; wrote `argos/vision/camera.py` — `Camera` class wrapping `cv2.VideoCapture`
+- Wrote `tests/test_camera.py` — headless test: 5-frame warm-up, saves `tests/camera_test.jpg`
+- Confirmed all sensorium sensors connected and active on hardware:
+  - **MPU-6050** IMU — I2C 0x68 on Waveshare expansion header (gyro + accel)
+  - **Flotilla Motion ×2** — LSM303D (accel + magnetometer), via Flotilla dock USB
+  - **Flotilla Weather** — BMP280 (temperature + pressure), via Flotilla dock USB
+  - **IR proximity ×2** — BOARD 7 (CN9) and BOARD 12 (CN8)
+  - **Camera** — USB webcam at /dev/video0
+
+### Camera test result
+```
+Resolution : 640 × 480
+FPS        : 30.0
+Frame shape: (480, 640, 3)  dtype=uint8
+```
+
+### What worked
+- Camera opens immediately, warm-up and frame save work correctly
+- All sensorium sensor hardware confirmed present and responsive
+- `argos/vision/` package structure established
+
+### Sensorium drivers written this session
+- Wrote `argos/sensorium/imu.py` — `MPU6050` + `ImuReading` (14-byte I2C burst, accel/gyro/temp properties)
+- Wrote `argos/sensorium/sonar.py` — `HCSR04` (10 μs trigger, echo timing, temperature-corrected speed of sound)
+- Wrote `argos/sensorium/ir.py` — `IRSensor` + `IRPair` (digital, active-low, pull-up, BOARD 7/12)
+- Wrote `argos/sensorium/flotilla.py` — `FlotillaReader` (USB serial via pyserial, background thread, Motion ×2, Weather, Colour)
+  - Fixed two bugs in Pimoroni's official heading formula (normalisation + tiltcomp_y sign error)
+  - Custom direct serial driver — Pimoroni `flotilla` pip package and `flotillactl` daemon are **not used**
+- Wrote `tests/test_imu.py`, `tests/test_ir.py`, `tests/test_flotilla.py`, `tests/test_sonar.py`
+- HC-SR04 sonar confirmed working: readings from 3.4 cm to 23.2 cm verified against known distances
+
+### AHRS + sensor axis calibration (same session, continued)
 - Wrote `argos/sensorium/ahrs.py` — `MadgwickAHRS` (9DOF MARG + 6DOF IMU-only modes)
   - Gradient-descent quaternion update; Euler output (roll/pitch/yaw in degrees)
   - `init_from_accel()` for fast initial convergence; `calibrate_level()` for mounting offset
@@ -142,6 +134,7 @@ Frame shape: (480, 640, 3)  dtype=uint8
     Body LSM chip+Z=right; Arm LSM chip+Z=right (both LSMs left-handed convention — RHR wrong)
 - Wrote full `IMU_AXIS_REMAP`, `BODY_MOTION_AXIS_REMAP`, `ARM_MOTION_AXIS_REMAP` into
   `config.py` — all axes ★ measured, no inferred values
+- Wrote `tests/test_ahrs.py` — 9DOF AHRS live roll/pitch/yaw verified
 
 ### Key findings
 - Both Flotilla LSM303D chips use a **left-handed** axis convention: Z = −(X × Y).
@@ -149,6 +142,12 @@ Frame shape: (480, 640, 3)  dtype=uint8
   shows `chip+Z = RIGHT`. The corrected filter-frame mapping is `filter_Y = +chip_z`
   (was `−chip_z` before the right-tilt test).
 - MPU-6050 is standard right-handed — right-hand rule holds for all three axes.
+
+### Remaining after this session
+- `fusion.py` + `target.py` + `floor_plane.py` not yet written (Sensorium integration layer — Phase 2e)
+- Camera calibration (intrinsics) not yet done — Phase 2a
+- ArUco detection module (`argos/vision/aruco.py`) not yet written — Phase 2a
+- Full 360° magnetometer spin calibration pending (see Session 6)
 
 ---
 

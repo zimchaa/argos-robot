@@ -35,7 +35,7 @@ argos/
     floor_plane.py    # [planned] Monocular XZ estimation via ground-plane ray-cast
     imu.py            # MPU-6050 driver (I2C 0x68) — LIVE
     flotilla.py       # Flotilla dock wrapper — Motion ×2, Weather, Colour — LIVE
-    ahrs.py           # [planned] Madgwick filter — MPU-6050 + LSM303D → roll/pitch/yaw
+    ahrs.py           # MadgwickAHRS — 9DOF MARG + 6DOF modes — LIVE
     sonar.py          # HC-SR04 driver (BOARD 29/31, divider fitted) — LIVE
     ir.py             # IR proximity drivers (BOARD 7/12) — LIVE
     target.py         # [planned] TargetEstimate dataclass + confidence model
@@ -50,7 +50,14 @@ tests/
   test_all_motors_manual.py   # Interactive hardware test — all motors
   motor_jog.py                # Single-motor jog via SafetyMonitor
   jig.py                      # Random multi-motor sequence
-requirements.txt    # smbus2, RPi.GPIO (+ opencv-python, mcp planned)
+  test_camera.py              # USB webcam capture + save frame
+  test_imu.py                 # MPU-6050 live accel/gyro/temp readout
+  test_sonar.py               # HC-SR04 live distance readout
+  test_ir.py                  # IR proximity sensor live readout
+  test_flotilla.py            # Flotilla dock module readout (--raw mode)
+  test_ahrs.py                # 9DOF AHRS live roll/pitch/yaw (MPU + Flotilla)
+  probe_sensor_axes.py        # Axis alignment probe for all 3 IMU chips
+requirements.txt    # pyserial, opencv-python-headless (smbus2/RPi.GPIO via apt)
 DEVLOG.md           # Session-by-session development log
 docs/
   roadmap.md                            # Forward plan and procurement list
@@ -287,7 +294,7 @@ Entry point: `python -m argos.mcp`.
 
 ## Development status
 
-Session 5 complete (2026-02-27). All hardware verified. All sensorium sensors connected.
+Session 6 complete (2026-02-28). All hardware verified. All sensorium drivers live. Sensor axis calibration complete.
 
 **Confirmed working:**
 - Waveshare HAT at I2C 0x40 (`i2cdetect -y 1` verified)
@@ -295,27 +302,40 @@ Session 5 complete (2026-02-27). All hardware verified. All sensorium sensors co
 - All four arm joints confirmed working (2026-02-26): shoulder, elbow, wrist, gripper
 - `SafetyMonitor` speed clamping and watchdog verified via `motor_jog.py`
 - **USB webcam** at /dev/video0 — 640×480 @ 30fps confirmed (`tests/test_camera.py`)
-- **MPU-6050 IMU** — connected at I2C 0x68 on Waveshare expansion header
-- **Flotilla Motion ×2** (LSM303D accel + magnetometer) — connected via Flotilla dock USB
-- **Flotilla Weather** (BMP280 temperature + pressure) — connected via Flotilla dock USB
-- **IR proximity ×2** — BOARD 7 (CN9) and BOARD 12 (CN8)
+- **MPU-6050 IMU** — I2C 0x68, accel/gyro/temp readings verified (`tests/test_imu.py`)
+- **HC-SR04 sonar** — 3–23 cm range verified against known distances (`tests/test_sonar.py`)
+- **IR proximity ×2** — BOARD 7 (CN9) and BOARD 12 (CN8) confirmed (`tests/test_ir.py`)
+- **Flotilla Motion ×2** (LSM303D) — readings verified; axis remaps ★ measured on hardware
+- **Flotilla Weather** (BMP280) — temperature + pressure readings verified
+- **`MadgwickAHRS`** (`ahrs.py`) — 9DOF fusion verified via `tests/test_ahrs.py`
+- **Sensor axis remaps** — all 3 chips fully measured; both LSM303Ds confirmed left-handed convention
+- **Compass spin test** — `BODY_MOTION_MAG_REMAP` confirmed correct; `MAG_HARD_IRON_BIAS` rough
+  values in `config.py` (full 360° calibration still pending)
 
 **Known issues:**
 - **Track drift**: right track (motor 1) runs slower than left at equal power.
   Needs IMU/encoder/visual feedback to compensate.
 
-- **HC-SR04 sonar** — confirmed working (readings 3–23 cm verified, `tests/test_sonar.py`)
-
 ---
 
 ## Dependencies
 
+System packages (install via apt, not pip):
 ```
-smbus2      # I2C for PCA9685
-RPi.GPIO    # GPIO + software PWM for MotorShield
+sudo apt install python3-rpi.gpio python3-smbus2
 ```
 
-Planned additions: `opencv-python`, `mcp` (Anthropic), `flotilla` (Pimoroni — for Flotilla dock + Motion/Weather/Colour modules).
+pip (see `requirements.txt`):
+```
+pyserial               # Flotilla dock USB serial (custom driver — no Pimoroni lib)
+opencv-python-headless # Vision / ArUco detection
+```
+
+Planned additions: `mcp` (Anthropic) — for MCP server (Phase 3).
+
+Note: The Flotilla dock is driven by a custom serial reader (`argos/sensorium/flotilla.py`)
+communicating directly over USB serial. The Pimoroni `flotilla` pip package and
+`flotillactl` daemon are **not used**.
 
 Enable I2C: `raspi-config` → Interface Options → I2C.
 Disable SPI (default) to free MotorShield pins for motors 3 and 4.
